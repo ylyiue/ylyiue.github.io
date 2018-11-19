@@ -100,7 +100,7 @@ function init() {
 
     grid = new THREE.GridHelper(400, 40, 0xaaaaaa, 0xaaaaaa);
     grid.position.y = -99.5;
-    roomPivot.add(grid);
+    // roomPivot.add(grid);
 
     // stats
 
@@ -127,16 +127,18 @@ function init() {
 
     // gui
 
-    let gui = new dat.GUI();
-    gui.add(params, 'rotate');
-    gui.add(params, 'grid');
-    gui.open();
+    // let gui = new dat.GUI();
+    // gui.add(params, 'rotate');
+    // gui.add(params, 'grid');
+    // gui.open();
 
     // events
 
     window.addEventListener('resize', onWindowResize, false);
-    window.addEventListener('mousemove', onMouseMove); // for desktop
-    window.addEventListener('touchmove', onMouseMove); // for mobile
+    document.addEventListener('keydown', onKeyDown, false);
+    document.addEventListener('keyup', onKeyUp, false);
+    document.addEventListener('mousemove', onMouseMove); // for desktop
+    // window.addEventListener('touchmove', onMouseMove); // for mobile
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mouseup', onMouseUp);
 
@@ -171,6 +173,22 @@ function init() {
         let labels = document.getElementsByClassName(name);
         for (let i = 0; i < labels.length; i++) {
             labels[i].classList.toggle('hide');
+        }
+    }
+
+    function onKeyDown(event) {
+        switch (event.keyCode) {
+            case 16:
+                params.rotate = true;
+                break;
+        }
+    }
+
+    function onKeyUp(event) {
+        switch (event.keyCode) {
+            case 16:
+                params.rotate = false;
+                break;
         }
     }
 
@@ -367,7 +385,7 @@ function animate() {
     if (params.rotate === true) {
         roomPivot.rotation.y += 0.005;
     }
-    grid.visible = params.grid;
+    // grid.visible = params.grid;
 
     control.update();
     if (outline) {
@@ -394,20 +412,27 @@ function onWindowResize() {
 }
 
 function clear() {
-    for (let name in items) {
-        if (items.hasOwnProperty(name)) {
-            roomPivot.remove(items[name]);
-            delete items[name];
-            let labels = document.getElementsByClassName('label-topic-' + name);
+    for (let itemName in items) {
+        if (items.hasOwnProperty(itemName)) {
+            roomPivot.remove(items[itemName]);
+            delete items[itemName];
+            let labels = document.getElementsByClassName('label-topic-' + itemName);
             for (let i = labels.length - 1; i >= 0; i--) {
+                console.log(labels[i].className);
+                let topicName = labels[i].className.split(' topic-')[1];
+                let keywords = document.getElementsByClassName('label-keywords-' + topicName);
+                for (let j = keywords.length - 1; j >= 0; j--) {
+                    keywords[j].remove();
+                }
                 labels[i].remove();
             }
-            labels = document.getElementsByClassName('label-name-' + name);
+            labels = document.getElementsByClassName('label-name-' + itemName);
             for (let i = labels.length - 1; i >= 0; i--) {
                 labels[i].remove();
             }
         }
     }
+    keywordsShown = false;
     animate();
 }
 
