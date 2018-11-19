@@ -9,9 +9,8 @@ let room, roomPivot, grid;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2(), onMouseDownPosition = new THREE.Vector2();
 
-let items = {};
-let itemTopics = {};
-let hoveredNameLabel;
+let items = {}, itemTopics = {};
+let hoveredNameLabel, keywordsShown = false;
 // let topicShown = [];
 
 let params = {
@@ -27,10 +26,6 @@ let outline = false;
 
 let helpersShown = false;
 let boundingBox = false;
-
-// const
-
-const ROOM_LENGTH = 400, ROOM_WIDTH = 400, ROOM_HEIGHT = 200;
 
 init();
 animate();
@@ -55,8 +50,6 @@ function init() {
     camera = new THREE.PerspectiveCamera(60, width / height, 1, 10000);
     camera.position.set(180, 300, 360);
     camera.rotation.set(0.69, 0.36, 0.28);
-    // camera.position.set(0, 300, 400);
-    // camera.lookAt(scene.position);
 
     // renderer
 
@@ -162,9 +155,9 @@ function init() {
 
     function setupRoom() {
 
-        let roomGeometry = new THREE.BoxGeometry(ROOM_LENGTH, ROOM_HEIGHT, ROOM_WIDTH);
-        let lambert = new THREE.MeshPhongMaterial({
-            color: 0xffffff,
+        let roomGeometry = new THREE.BoxGeometry(400, 200, 400);
+        let lambert = new THREE.MeshLambertMaterial({
+            color: 0xeeeeee,
             side: THREE.BackSide,
             needsUpdate: true
         });
@@ -175,7 +168,7 @@ function init() {
 
 
     function toggleLabels(name) {
-        let labels = document.getElementsByClassName('label-topic-' + name);
+        let labels = document.getElementsByClassName(name);
         for (let i = 0; i < labels.length; i++) {
             labels[i].classList.toggle('hide');
         }
@@ -200,10 +193,16 @@ function init() {
         mouse.y = -(y / window.innerHeight) * 2 + 1;
         let selected = getIntersection();
         if (selected !== undefined && selected !== room && selected !== grid) {
-            // console.log(selected);
-            hoveredNameLabel = document.getElementsByClassName('label-name-' + selected.parent.name)[0];
-            hoveredNameLabel.classList.toggle('hide');
-            outlinePass.selectedObjects = [selected.parent];
+            if (selected.name.startsWith("circle-")) { // topic circle
+                outlinePass.selectedObjects = [selected];
+            }
+            else { // item
+                if (!keywordsShown) {
+                    hoveredNameLabel = document.getElementsByClassName('label-name-' + selected.parent.name)[0];
+                    hoveredNameLabel.classList.toggle('hide');
+                    outlinePass.selectedObjects = [selected.parent];
+                }
+            }
         }
         else
             outlinePass.selectedObjects = [];
@@ -220,7 +219,7 @@ function init() {
 
         onMouseDownPosition.x = event.clientX - onMouseDownPosition.x;
         onMouseDownPosition.y = event.clientY - onMouseDownPosition.y;
-        if (onMouseDownPosition.length() > 5) { // orbit controls
+        if (onMouseDownPosition.length() > 5) { // avoid reacting to orbit controls
             return;
         }
 
@@ -228,7 +227,27 @@ function init() {
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         let selected = getIntersection();
         if (selected !== undefined && selected !== room) {
-            toggleLabels(selected.parent.name);
+            if (selected.name.startsWith("circle-")) {
+                keywordsShown = !keywordsShown;
+                let itemName = selected.parent.parent.name;
+                let topicName = selected.name.split("-")[1];
+                let topics = itemTopics[itemName];
+                topics.children.forEach(function (topic) {
+                    if (topic !== selected)
+                        topic.visible = !topic.visible;
+                });
+                toggleLabels('label-keywords-' + topicName);
+                toggleLabels('label-topic-' + itemName);
+                toggleLabels('topic-' + topicName);
+            }
+            else {
+                if (!keywordsShown) {
+                    let itemName = selected.parent.name;
+                    toggleLabels('label-topic-' + itemName);
+                    if (itemTopics[itemName])
+                        itemTopics[itemName].visible = !itemTopics[itemName].visible;
+                }
+            }
         }
     }
 
@@ -264,7 +283,7 @@ function initItem(name, item) {
     item.traverse(function (child) {
         if (child.isMesh) {
             let lambert = new THREE.MeshLambertMaterial({
-                color: 0xeeeeee,
+                color: 0xffffff,
                 side: THREE.DoubleSide,
             });
             child.material = lambert;
@@ -297,20 +316,42 @@ function loadLabels(name) {
         complete: function (results) {
             let topics = new THREE.Group();
             for (let i = 0; i < results.data.length; i++) {
-                let topicDiv = document.createElement('div');
-                // let size = (results.data[i][0] > 0.3) ? " large" : "";
-                // label.className = 'label ' + name + ' hide' + size;
-                topicDiv.className = 'label-topic label-topic-' + name + ' hide';
-                let size = 40 + (results.data[i][0] - 0.08) / 0.3 * 20 + 'px';
-                topicDiv.style.cssText = "width: " + size + "; height: " + size + "; line-height: " + size;
-                topicDiv.textContent = results.data[i][1];
-                let topic = new THREE.CSS2DObject(topicDiv);
-                let r = 150, theta = Math.PI * 2 / results.data.length * i;
-                topic.position.x = r * Math.cos(theta);
-                topic.position.y = r * Math.sin(theta);
-                topics.add(topic);
+                // hover name label
+                let textDiv = document.createElement('div');
+                textDiv.className = 'label-topic label-topic-' + name + ' topic-' + results.data[i][1] + ' hide';
+                textDiv.textContent = results.data[i][1];
+                let text = new THREE.CSS2DObject(textDiv);
+                //
+                let size = 10 + (results.data[i][0] - 0.08) / 0.3 * 10;
+                let geometry = new THREE.CircleGeometry(size, 32);
+                let material = new THREE.MeshBasicMaterial({
+                    color: 0x000000,
+                    opacity: 0.7,
+                    transparent: true,
+                    depthTest: false
+                });
+                let circle = new THREE.Mesh(geometry, material);
+                circle.name = "circle-" + results.data[i][1];
+                let r = 80, theta = Math.PI * 2 / results.data.length * i;
+                circle.position.x = r * Math.cos(theta);
+                circle.position.y = r * Math.sin(theta);
+                for (let j = 1; j < 20; j += 2) {
+                    let textDiv = document.createElement('div');
+                    textDiv.className = 'label-keywords label-keywords-' + results.data[i][1] + ' hide';
+                    textDiv.textContent = results.data[i][j];
+                    let keyword = new THREE.CSS2DObject(textDiv);
+                    r = 80;
+                    theta = Math.PI * 2 / 10 * (j + 1) / 2;
+                    keyword.position.x = r * Math.cos(theta);
+                    keyword.position.y = r * Math.sin(theta);
+                    circle.add(keyword);
+                }
+                circle.add(text);
+                topics.add(circle);
+                // console.log(circle);
             }
             topics.position.set(center.x, center.y, center.z);
+            topics.visible = false;
             itemTopics[name] = topics;
             items[name].add(topics);
         }
@@ -358,11 +399,11 @@ function clear() {
             roomPivot.remove(items[name]);
             delete items[name];
             let labels = document.getElementsByClassName('label-topic-' + name);
-            for (let i = labels.length-1; i >= 0; i--) {
+            for (let i = labels.length - 1; i >= 0; i--) {
                 labels[i].remove();
             }
             labels = document.getElementsByClassName('label-name-' + name);
-            for  (let i = labels.length-1; i >= 0; i--) {
+            for (let i = labels.length - 1; i >= 0; i--) {
                 labels[i].remove();
             }
         }
