@@ -252,15 +252,15 @@ function onFileSelect(event) {
         reader.onload = (function (file) {
             return function (e) {
                 let name = file.name.toLowerCase().split('\.obj')[0];
-                parseObjFile(name, e.target.result);
+                let item = loader.parse(e.target.result);
+                initItem(name, item);
             };
         })(f);
         reader.readAsText(f, 'ISO-8859-1');
     }
 }
 
-function parseObjFile(name, text) {
-    let item = loader.parse(text);
+function initItem(name, item) {
     item.traverse(function (child) {
         if (child.isMesh) {
             let lambert = new THREE.MeshLambertMaterial({
@@ -357,8 +357,17 @@ function clear() {
         if (items.hasOwnProperty(name)) {
             roomPivot.remove(items[name]);
             delete items[name];
+            let labels = document.getElementsByClassName('label-topic-' + name);
+            for (let i = labels.length-1; i >= 0; i--) {
+                labels[i].remove();
+            }
+            labels = document.getElementsByClassName('label-name-' + name);
+            for  (let i = labels.length-1; i >= 0; i--) {
+                labels[i].remove();
+            }
         }
     }
+    animate();
 }
 
 function demo() {
@@ -370,19 +379,7 @@ function loadObjModel(name) {
     loader.load(
         '../models/' + name + '.obj',
         function (item) {
-            item.traverse(function (child) {
-                if (child.isMesh) {
-                    let lambert = new THREE.MeshLambertMaterial({
-                        color: 0xeeeeee,
-                        side: THREE.DoubleSide,
-                    });
-                    child.material = lambert;
-                }
-            });
-            item.name = name;
-            items[name] = item;
-            roomPivot.add(item);
-            loadLabels(name);
+            initItem(name, item);
         },
         function (xhr) {
             console.log(name + " " + (xhr.loaded / xhr.total * 100) + '% loaded');
