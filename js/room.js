@@ -11,6 +11,7 @@ let mouse = new THREE.Vector2(), onMouseDownPosition = new THREE.Vector2();
 
 let items = {}, itemTopics = {};
 let hoveredNameLabel, keywordsShown = false;
+let isDemo = false;
 // let topicShown = [];
 
 let params = {
@@ -157,13 +158,16 @@ function init() {
 
     function setupRoom() {
 
-        let roomGeometry = new THREE.BoxGeometry(400, 200, 400);
+        // let roomGeometry = new THREE.BoxGeometry(400, 200, 400);
+        let roomGeometry = new THREE.PlaneGeometry(400, 400);
         let lambert = new THREE.MeshLambertMaterial({
-            color: 0xeeeeee,
+            color: 0xdddddd,
             side: THREE.BackSide,
             needsUpdate: true
         });
         room = new THREE.Mesh(roomGeometry, lambert);
+        room.rotation.set(Math.PI/2, 0, 0);
+        room.position.set(0, -100, 0);
         room.name = 'room';
         roomPivot.add(room);
     }
@@ -433,12 +437,16 @@ function clear() {
         }
     }
     keywordsShown = false;
+    isDemo = false;
     animate();
 }
 
 function demo() {
+    if (isDemo)
+        return;
     loadObjModel('music');
-    loadObjModel('test');
+    loadObjModel('dream');
+    isDemo = true;
 }
 
 function loadObjModel(name) {
