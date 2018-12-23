@@ -7,51 +7,21 @@ canvas {
     height: 100%
 }
 
-.label-keywords {
+.label {
     position: absolute;
     top: 0;
     left: 0;
     z-index: 1;
-    padding: 5px;
-    color: #fff;
+    padding: 1em;
+    color: rgba(0, 0, 0, 0.7);
     text-align: center;
-    background: rgba(0, 0, 0, 0.8);
-    border-radius: 5px;
-    font: 10px Arial;
-    line-height: 1.1;
-}
-
-.label-topic {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1;
-    padding: 5px;
-    color: #fff;
-    text-align: center;
-    border-radius: 50%;
-    font: 10px Arial;
-}
-
-.label-name {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1;
-    padding: 6px;
-    color: #fff;
-    /*border: 2px solid #fff;*/
-    text-align: center;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0);
     border-radius: .5em;
-    font: 12px Arial;
+    font: 20px Monaco;
     line-height: 1.1;
-}
-
-.hide {
     visibility: hidden
 }
 
-.large {
-    padding: 12px;
-}
+/*.hide {*/
+    /*visibility: hidden*/
+/*}*/
