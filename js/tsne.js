@@ -1,6 +1,7 @@
 let container, camera, scene, renderer, control, stats, axesHelper;
 
 let labelRenderer;
+let ddsLoader = new THREE.DDSLoader();
 
 let params = {
     rotate: false,
@@ -13,20 +14,17 @@ let hulls = new THREE.Group();
 let labels = new THREE.Group();
 let topicGroup = [];
 let topicSize = [];
-let rgbColors = ['7, 153, 146', '96, 163, 188', '12, 36, 97', '246, 185, 59', '120, 224, 143',
-    '229, 142, 38', '183, 21, 64', '229, 80, 57', '10, 61, 98', '74, 105, 189'];
+let rgbColors = ["7, 153, 146", "96, 163, 188", "12, 36, 97", "246, 185, 59", "120, 224, 143",
+    "229, 142, 38", "183, 21, 64", "229, 80, 57", "10, 61, 98", "74, 105, 189"];
 let hexColors = [0xF79F1F, 0xA3CB38, 0x1289A7, 0xD980FA, 0xB53471, 0xEA2027, 0x006266, 0x1B1464, 0x5758BB, 0x6F1E51];
 let docNames = [];
-let docImgMats = [];
-
-let useImage = true;
 
 init();
 animate();
 
 function init() {
 
-    container = document.createElement('div');
+    container = document.createElement("div");
     document.body.appendChild(container);
     // container = document.getElementById('container');
 
@@ -47,13 +45,14 @@ function init() {
 
     let width = window.innerWidth;
     let height = window.innerHeight;
-    camera = new THREE.PerspectiveCamera(75, width / height, 1, 10000);
+    camera = new THREE.PerspectiveCamera(85, width / height, 1, 150);
     camera.position.set(30, 20, 50);
     camera.lookAt(scene.position);
 
     // renderer
 
-    renderer = new THREE.WebGLRenderer({antialias: true});
+    // renderer = new THREE.WebGLRenderer({antialias: true});
+    renderer = new THREE.WebGLRenderer();
     renderer.setClearColor(0xffffff);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
@@ -61,7 +60,7 @@ function init() {
 
     // light
 
-    setupLights();
+    // setupLights();
 
     // orbit controls
 
@@ -71,8 +70,8 @@ function init() {
 
     labelRenderer = new THREE.CSS3DRenderer();
     labelRenderer.setSize(width, height);
-    labelRenderer.domElement.style.position = 'absolute';
-    labelRenderer.domElement.style.top = '0';
+    labelRenderer.domElement.style.position = "absolute";
+    labelRenderer.domElement.style.top = "0";
     document.body.appendChild(labelRenderer.domElement);
 
     // load topic hulls & texts
@@ -93,38 +92,36 @@ function init() {
     // gui
 
     let gui = new dat.GUI();
-    gui.add(params, 'rotate');
-    gui.add(params, 'axesHelper');
-    gui.add(params, 'shape');
-    gui.add(params, 'text');
+    gui.add(params, "rotate");
+    gui.add(params, "axesHelper");
+    gui.add(params, "shape");
+    gui.add(params, "text");
     gui.open();
 
     // events
 
-    window.addEventListener('resize', onWindowResize, false);
+    window.addEventListener("resize", onWindowResize, false);
 
     // functions
 
-    function setupLights() {
-        // let ambient = new THREE.AmbientLight( 0xffffff, 0.5 );
-        // scene.add( ambient );
-        let hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xbbbbbb, 0.9);
-        hemisphereLight.position.set(0, 80, 0);
-        scene.add(hemisphereLight);
-    }
+    // function setupLights() {
+    //     let hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xbbbbbb, 0.9);
+    //     hemisphereLight.position.set(0, 80, 0);
+    //     scene.add(hemisphereLight);
+    // }
 
     function loadDocs() {
-        let csv_file = '../data/doc_namelist.csv';
+        let csv_file = "../data/doc_namelist.csv";
         Papa.parse(csv_file, {
             // preview: 100,
             header: true,
-            delimiter: ',',
+            delimiter: ",",
             dynamicTyping: true,
             skipEmptyLines: true,
             download: true,
             complete: function (results) {
                 results.data.forEach(function (doc) {
-                    docNames[doc['id']] = doc['name'];
+                    docNames[doc.id] = doc.name;
                     // let imgPath = '../data/img/' + doc['name'] + '.jpg';
                     // docImgMats[doc['id']] = new THREE.MeshBasicMaterial({map: new THREE.TextureLoader().load(imgPath)});
                 });
@@ -135,11 +132,11 @@ function init() {
     }
 
     function loadTopics() {
-        let csv_file = '../data/topics/topics.csv';
-        Papa.parse(csv_file, {
+        let csvFile = "../data/topics/topics.csv";
+        Papa.parse(csvFile, {
             // preview: 2,
             header: true,
-            delimiter: ',',
+            delimiter: ",",
             dynamicTyping: true,
             skipEmptyLines: true,
             download: true,
@@ -148,21 +145,21 @@ function init() {
                 // itemPivot.position.set(position.x, position.y, position.z);
                 results.data.forEach(function (topic) {
                     let group = new THREE.Group();
-                    group.position.set(topic['x'], topic['y'], topic['z']);
+                    group.position.set(topic.x, topic.y, topic.z);
                     // let size = topic['size'] * 10;
-                    let size = topic['size'] * 10;
+                    let size = topic.size * 10;
                     group.scale.set(size, size, size);
-                    topicSize.push(topic['size']);
+                    topicSize.push(topic.size);
                     topicGroup.push(group);
                     hulls.add(group);
-                    loadTerms(topic['id']);
+                    loadTerms(topic.id);
                 });
             }
         });
     }
 
     function loadTerms(t) {
-        let csvFile = '../data/topics/topic_' + t + '_terms.csv';
+        let csvFile = "../data/topics/topic_" + t + "_terms.csv";
         let termsPerTopic = Math.round(100 * topicSize[t] * 10);
         // let termsPerTopic = Math.round(50 * topicSize[t] * 10);
         let termDocs = loadTermDocs(t, termsPerTopic);
@@ -173,62 +170,56 @@ function init() {
         Papa.parse(csvFile, {
             preview: termsPerTopic,
             header: true,
-            delimiter: ',',
+            delimiter: ",",
             dynamicTyping: true,
             skipEmptyLines: true,
             download: true,
             complete: function (results) {
                 results.data.forEach(function (term) {
-                    let rank = term['idx'];
+                    let rank = term.idx;
                     if (termDocsPos[rank].length >= 4) {
 
                         function createHull(points, t, addToScene) {
-                            let geometry = new THREE.ConvexGeometry(points);
+                            let geometry = new THREE.ConvexBufferGeometry(points);
+                            const faceCount = geometry.getAttribute("position").count / 3;
                             let faceMats = [];
-                            for (let i = 0; i < geometry.faces.length; i++) {
+                            let uvArray = new Float32Array(faceCount * 3 * 2);
+                            const tan15 = Math.tan(Math.PI / 12);
+                            const uvPerFace = [0, 0, tan15, 1, 1, tan15];
+                            geometry.clearGroups();
+                            for (let i = 0; i < faceCount; i++) {
                                 (function (path) {
-                                    let texture = new THREE.TextureLoader().load(path, function (tex) {
-                                        tex.needsUpdate = true;
-                                        tex.minFilter = THREE.LinearFilter;
-                                        faceMats[i] = new THREE.MeshPhongMaterial({
+                                    let texture = ddsLoader.load(path, function (tex) {
+                                        faceMats[i] = new THREE.MeshBasicMaterial({
                                             map: tex,
                                             transparent: true,
                                             opacity: 0.7
                                         });
-                                        if (i === geometry.faces.length - 1) {
-                                            // console.log(faceMats);
-                                            geometry.faceVertexUvs[0] = [];
-                                            let tan = Math.tan(Math.PI / 12);
-                                            for (let j = 0; j < geometry.faces.length; j++) {
-                                                geometry.faces[j].materialIndex = j % geometry.faces.length;
-                                                geometry.faceVertexUvs[0].push([
-                                                    new THREE.Vector2(0, 0),
-                                                    new THREE.Vector2(tan, 1),
-                                                    new THREE.Vector2(1, tan),
-                                                ]);
-                                                geometry.uvsNeedUpdate = true;
-                                            }
+                                        uvArray.set(uvPerFace, i * 6);
+                                        geometry.addGroup(i * 3, 3, i);
+                                        if (i === faceCount - 1) {
+                                            let uv = new THREE.BufferAttribute(uvArray, 2);
+                                            geometry.addAttribute("uv", uv);
                                             addToScene(new THREE.Mesh(geometry, faceMats));
                                         }
                                     });
-                                })('../data/img/' + docNames[termDocsId[rank][i]] + '.jpg');
+                                })("../data/dds/" + docNames[termDocsId[rank][i]] + ".dds");
                             }
                         }
 
                         function addToScene(mesh) {
-                            mesh.position.set(term['x'], term['y'], term['z']);
+                            mesh.position.set(term.x, term.y, term.z);
                             mesh.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]); // so the shapes are same size
                             // mesh.scale.set(0.1 / topicSize[t], 0.1 / topicSize[t], 0.1 / topicSize[t]); // so the shapes are same size
                             topicGroup[t].add(mesh);
-
-                            let label = document.createElement('div');
-                            label.className = 'label';
-                            label.textContent = term['term'];
-                            label.style.color = 'rgba(' + rgbColors[t] + ', 0.8)';
+                            let label = document.createElement("div");
+                            label.className = "label";
+                            label.textContent = term.term;
+                            label.style.color = "rgba(" + rgbColors[t] + ", 0.8)";
                             let cssObject = new THREE.CSS3DObject(label);
                             // cssObject.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]);
                             cssObject.scale.set(0.001 / topicSize[t], 0.001 / topicSize[t], 0.001 / topicSize[t]);
-                            cssObject.position.set(term['x'], term['y'], term['z']);
+                            cssObject.position.set(term.x, term.y, term.z);
                             topicGroup[t].add(cssObject);
                         }
 
@@ -241,7 +232,7 @@ function init() {
     }
 
     function loadTermDocs(t, termsPerTopic) {
-        let csvFile = '../data/topics/topic_' + t + '_doc_points.csv';
+        let csvFile = "../data/topics/topic_" + t + "_doc_points.csv";
         let pos = new Array(termsPerTopic);
         let docId = new Array(termsPerTopic);
         for (let i = 0; i < pos.length; i++) {
@@ -250,16 +241,16 @@ function init() {
         }
         Papa.parse(csvFile, {
             header: true,
-            delimiter: ',',
+            delimiter: ",",
             dynamicTyping: true,
             skipEmptyLines: true,
             download: true,
             complete: function (results) {
                 results.data.forEach(function (doc) {
-                    if (doc['term_rank'] < termsPerTopic) {
-                        let rank = doc['term_rank'];
-                        pos[rank].push(new THREE.Vector3(doc['x'], doc['y'], doc['z']));
-                        docId[rank].push(doc['doc_id']);
+                    if (doc.term_rank < termsPerTopic) {
+                        let rank = doc.term_rank;
+                        pos[rank].push(new THREE.Vector3(doc.x, doc.y, doc.z));
+                        docId[rank].push(doc.doc_id);
                     }
                 });
             }
@@ -269,10 +260,12 @@ function init() {
 }
 
 function setLabelsVisibility(visible) {
-    let labels = document.getElementsByClassName('label');
+
+    let labels = document.getElementsByClassName("label");
     for (let i = 0; i < labels.length; i++) {
-        labels[i].style.visibility = visible ? 'visible' : 'hidden';
+        labels[i].style.visibility = visible ? "visible" : "hidden";
     }
+
 }
 
 function animate() {
@@ -287,18 +280,11 @@ function animate() {
 
     hulls.visible = params.shape;
     axesHelper.visible = params.axesHelper;
-
-    if (params.text === true) {
-        setLabelsVisibility(true);
-    }
-    else {
-        setLabelsVisibility(false);
-    }
+    setLabelsVisibility(params.text);
 
     renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
     control.update();
-
 
     stats.end();
 }
