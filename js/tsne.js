@@ -1,7 +1,8 @@
 let container, camera, scene, renderer, control, stats, axesHelper;
 
 let labelRenderer;
-let ddsLoader = new THREE.DDSLoader();
+// let textureLoader = new THREE.DDSLoader();
+let textureLoader = new THREE.TextureLoader();
 
 let params = {
     rotate: false,
@@ -189,21 +190,22 @@ function init() {
                             geometry.clearGroups();
                             for (let i = 0; i < faceCount; i++) {
                                 (function (path) {
-                                    let texture = ddsLoader.load(path, function (tex) {
+                                    uvArray.set(uvPerFace, i * 6);
+                                    geometry.addGroup(i * 3, 3, i);
+                                    let texture = textureLoader.load(path, function (tex) {
                                         faceMats[i] = new THREE.MeshBasicMaterial({
                                             map: tex,
                                             transparent: true,
                                             opacity: 0.7
                                         });
-                                        uvArray.set(uvPerFace, i * 6);
-                                        geometry.addGroup(i * 3, 3, i);
                                         if (i === faceCount - 1) {
                                             let uv = new THREE.BufferAttribute(uvArray, 2);
                                             geometry.addAttribute("uv", uv);
                                             addToScene(new THREE.Mesh(geometry, faceMats));
                                         }
                                     });
-                                })("../data/dds/" + docNames[termDocsId[rank][i]] + ".dds");
+                                })("../data/img/" + docNames[termDocsId[rank][i]] + ".jpg");
+                                // })("../data/dds/" + docNames[termDocsId[rank][i]] + ".dds");
                             }
                         }
 
