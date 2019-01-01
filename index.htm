@@ -5,16 +5,34 @@
     <meta charset=utf-8>
     <title>TSNE</title>
     <link rel="stylesheet" href="css/page.css"/>
+    <link rel="stylesheet" href="css/jquery.modal.css"/>
 </head>
 
 <body>
 
+<div id="faces" class="modal">
+    <!--<p style="color: #999999; font: 100px Monaco;">hello!</p>-->
+    <!--<a href="#" rel="modal:close">Close</a>-->
+</div>
+
+<!--<div id="functions" style="color: #999999; position: absolute; top: 5px; width: 100%; text-align: center; font: 14px Monaco;">-->
+<!--</div>-->
+
 <script src="js/libs/three.min.js"></script>
+<script src="js/libs/WebGL.js"></script>
 <script src="js/libs/controls/TrackballControls.js"></script>
+<script src="js/libs/controls/OrbitControls.js"></script>
 <script src="js/libs/dat.gui.min.js"></script>
 <script src="js/libs/stats.min.js"></script>
 
-<!--<script src="js/libs/CSS2DRenderer.js"></script>-->
+<script src="js/libs/shaders/CopyShader.js"></script>
+<script src="js/libs/shaders/FXAAShader.js"></script>
+<script src="js/libs/postprocessing/EffectComposer.js"></script>
+<script src="js/libs/postprocessing/RenderPass.js"></script>
+<script src="js/libs/postprocessing/ShaderPass.js"></script>
+<script src="js/libs/postprocessing/OutlinePass.js"></script>
+
+<script src="js/libs/CSS2DRenderer.js"></script>
 <script src="js/libs/CSS3DRenderer.js"></script>
 
 <script src="js/libs/QuickHull.js"></script>
@@ -24,6 +42,7 @@
 
 <script src="js/libs/papaparse.min.js"></script>
 <script src="js/libs/jquery-3.3.1.min.js"></script>
+<script src="js/libs/jquery.modal.min.js"></script>
 <script src="js/libs/tween.min.js"></script>
 <script src="js/tsne.js"></script>
 
