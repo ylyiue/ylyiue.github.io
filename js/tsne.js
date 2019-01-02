@@ -1,9 +1,8 @@
 let container, camera, scene, renderer, labelRenderer, control, stats, axesHelper;
 // let textureLoader = new THREE.DDSLoader();
 let textureLoader = new THREE.TextureLoader();
-let composer, outlinePass, effectFXAA;
-let glowing;
-let raycaster = new THREE.Raycaster();
+let composer, outlinePass, effectFXAA, glowing;
+let raycaster = new THREE.Raycaster(), mouseDownPosition;
 
 let modalRenderer, modalScene, modalCamera, modalControl;
 
@@ -17,9 +16,7 @@ let params = {
     keyword: "(terms in console)"
 };
 
-let hulls = new THREE.Group();
-let topicHull = new THREE.Group();
-let labels = new THREE.Group();
+let hulls = new THREE.Group(), topicHull = new THREE.Group(), labels = new THREE.Group();
 let topicGroups = [];
 let topicSize = [];
 let rgbColors = ["7, 153, 146", "96, 163, 188", "12, 36, 97", "246, 185, 59", "120, 224, 143",
@@ -154,11 +151,23 @@ function init() {
         }
     }
 
-    function onModalClick(event) {
+    function onModalMouseDown(event) {
 
+        mouseDownPosition = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
+    }
+
+    function onModalMouseUp(event) {
+
+        let mouse = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
+        if (mouse.distanceTo(mouseDownPosition) > 0.2) {
+            return; // prevent being triggered by control
+        }
         let selected = checkIntersection(event, true);
         if (!selected) {
             $.modal.close();
+        }
+        else {
+            console.log(selected);
         }
     }
 
@@ -167,6 +176,7 @@ function init() {
         let x = event.changedTouches ? event.changedTouches[0].pageX : event.clientX;
         let y = event.changedTouches ? event.changedTouches[0].pageY : event.clientY;
         let mouse = new THREE.Vector2((x / width) * 2 - 1, -(y / height) * 2 + 1);
+        mouseDownPosition = mouse;
         let castCamera = isModal ? modalCamera : camera;
         let castScene = isModal ? [modalScene] : [scene];
         raycaster.setFromCamera(mouse, castCamera);
@@ -185,7 +195,8 @@ function init() {
         modalRenderer.setSize(width * 0.7, height * 0.6);
         modalRenderer.setClearColor(0x000000, 0);
         $("#faces").append(modalRenderer.domElement)
-            .click(onModalClick);
+            .mouseup(onModalMouseUp)
+            .mousedown(onModalMouseDown);
         modalScene = new THREE.Scene();
         modalCamera = new THREE.PerspectiveCamera(85, width / height, 0.5, 150);
         modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
@@ -256,8 +267,7 @@ function init() {
                     return Promise.all(promises)
                         .catch((msg) => {
                             console.error(msg);
-                        })
-                        ;
+                        });
                 };
 
                 const createUniverseHull = () => {
@@ -284,6 +294,7 @@ function init() {
                 };
 
                 processTopics(results.data).then(createUniverseHull).then(() => {
+                    // console.log(topicGroups[0]);
                     console.log("terms:", Object.keys(termHulls));
                 }).catch((msg) => {
                     console.error(msg);
@@ -345,7 +356,10 @@ function init() {
                                     faceMats[i] = new THREE.MeshBasicMaterial({
                                         map: tex,
                                         transparent: true,
-                                        opacity: 0.7
+                                        opacity: 0.7,
+                                        polygonOffset: true,
+                                        polygonOffsetFactor: 1., // positive value pushes polygon further away
+                                        polygonOffsetUnits: 4.
                                     });
                                     resolve();
                                 },
@@ -354,7 +368,10 @@ function init() {
                                     faceMats[i] = new THREE.MeshBasicMaterial({
                                         color: 0xffffff,
                                         transparent: true,
-                                        opacity: 0.2
+                                        opacity: 0.2,
+                                        polygonOffset: true,
+                                        polygonOffsetFactor: 1., // positive value pushes polygon further away
+                                        polygonOffsetUnits: 4.
                                     });
                                     resolve();
                                 }
@@ -373,10 +390,14 @@ function init() {
                 };
 
                 const addToScene = (mesh) => {
+
+                    // mesh
                     mesh.position.set(term.x, term.y, term.z);
                     mesh.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]); // so the shapes are same size
                     // mesh.scale.set(0.1 / topicSize[t], 0.1 / topicSize[t], 0.1 / topicSize[t]); // so the shapes are same size
                     topicGroups[t].add(mesh);
+
+                    // css label
                     let label = document.createElement("div");
                     label.className = "label";
                     label.textContent = term.term;
@@ -386,6 +407,22 @@ function init() {
                     cssObject.scale.set(0.0005 / topicSize[t], 0.0005 / topicSize[t], 0.0005 / topicSize[t]);
                     cssObject.position.set(term.x, term.y, term.z);
                     topicGroups[t].add(cssObject);
+
+                    // wireframe
+                    // (work with safari)
+
+                    // let geo = new THREE.Geometry().fromBufferGeometry(mesh.geometry);
+                    // let mat = new THREE.MeshBasicMaterial({
+                    //     color: 0xe3e3e3,
+                    //     wireframe: true,
+                    //     wireframeLinewidth: 5
+                    // });
+                    // let wireframe = new THREE.Mesh(geo, mat);
+                    // // wireframe.position.set(term.x, term.y, term.z);
+                    // // wireframe.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]);
+                    // // topicGroups[t].add(wireframe);
+                    // mesh.add(wireframe);
+
                     if (!(term.term in termHulls)) {
                         termHulls[term.term] = [];
                     }
@@ -400,7 +437,6 @@ function init() {
 
         const createTopicHull = () => {
             return new Promise((resolve, reject) => {
-                // console.log("finish loading", t, ":", topicGroups[t]);
                 let pos = topicGroups[t].position;
                 let scale = topicGroups[t].scale;
 
@@ -434,8 +470,6 @@ function init() {
                     mesh.position.set(pos.x, pos.y, pos.z);
                     mesh.scale.set(scale.x, scale.y, scale.z);
                     topicHull.add(mesh);
-                    // scene.add(mesh);
-                    // topicGroups[t].add(mesh);
                 }
                 else {
                     console.log("topic", t, "has less than 4 docs to form a hull");
