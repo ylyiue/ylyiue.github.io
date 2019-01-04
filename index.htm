@@ -3,6 +3,7 @@
 
 <head>
     <meta charset=utf-8>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>TSNE</title>
     <link rel="stylesheet" href="css/page.css"/>
     <link rel="stylesheet" href="css/jquery.modal.css"/>
@@ -11,7 +12,7 @@
 <body>
 
 <div id="faces" class="modal">
-    <!--<p style="color: #999999; font: 100px Monaco;">hello!</p>-->
+    <p id="term" style="color: #aaaaaa; text-align: center; font: 30px Monaco;">hello!</p>
     <!--<a href="#" rel="modal:close">Close</a>-->
 </div>
 
@@ -38,12 +39,13 @@
 <script src="js/libs/QuickHull.js"></script>
 <script src="js/libs/geometries/ConvexGeometry.js"></script>
 
-<script src="js/libs/loader/DDSLoader.js"></script>
+<!--<script src="js/libs/loader/DDSLoader.js"></script>-->
 
 <script src="js/libs/papaparse.min.js"></script>
 <script src="js/libs/jquery-3.3.1.min.js"></script>
 <script src="js/libs/jquery.modal.min.js"></script>
 <script src="js/libs/tween.min.js"></script>
+<script src="//unpkg.com/three-spritetext"></script>
 <script src="js/tsne.js"></script>
 
 </body>

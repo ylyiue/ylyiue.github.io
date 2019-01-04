@@ -2,9 +2,10 @@ let container, camera, scene, renderer, labelRenderer, control, stats, axesHelpe
 // let textureLoader = new THREE.DDSLoader();
 let textureLoader = new THREE.TextureLoader();
 let composer, outlinePass, effectFXAA, glowing;
-let raycaster = new THREE.Raycaster(), mouseDownPosition;
+let raycaster = new THREE.Raycaster(), mouseDownPosition, isClick = false;
 
-let modalRenderer, modalScene, modalCamera, modalControl;
+let modalRenderer, modalTextRender, modalScene, modalCamera, modalControl, mouseSprite;
+let meshOfModal = null, isDefault = true, docPoints;
 
 let params = {
     rotate: false,
@@ -24,7 +25,8 @@ let rgbColors = ["7, 153, 146", "96, 163, 188", "12, 36, 97", "246, 185, 59", "1
 let hexColors = [0xF79F1F, 0xA3CB38, 0x1289A7, 0xD980FA, 0xB53471, 0xEA2027, 0x006266, 0x1B1464, 0x5758BB, 0x6F1E51];
 let docNames = [];
 let termHulls = {};
-let topicHulls = new Array(10);
+let infoForDetailView = new Array(10);
+// let topicHulls = new Array(10);
 
 init();
 animate();
@@ -46,7 +48,6 @@ function init() {
     let height = window.innerHeight;
     // renderer = new THREE.WebGLRenderer({antialias: true});
     renderer = new THREE.WebGLRenderer();
-    // renderer.setClearColor(0xffffff);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     container.appendChild(renderer.domElement);
@@ -92,7 +93,7 @@ function init() {
 
     // modal
 
-    loadModal();
+    initiateModal();
 
     // stats
 
@@ -105,21 +106,25 @@ function init() {
 
     // outline
 
-    loadEffect();
+    initiateEffect();
 
     // events
 
-    container.addEventListener("mousemove", onMainTouchMove);
-    container.addEventListener("touchmove", onMainTouchMove);
+    container.addEventListener("mousemove", onMainMouseMove);
+    container.addEventListener("touchmove", onMainMouseMove);
     container.addEventListener("click", onMainClick);
     window.addEventListener("resize", onWindowResize);
 
+
     // functions
 
-    function onMainTouchMove(event) {
+    function onMainMouseMove(event) {
 
         let selected = checkIntersection(event);
         if (selected) {
+            if (selected.name === "universe" || selected.name.startsWith("point")) {
+                return;
+            }
             if (selected !== glowing) {
                 outlinePass.edgeGlow = 0;
                 outlinePass.pulsePeriod = 0;
@@ -134,40 +139,116 @@ function init() {
         let selected = checkIntersection(event);
         if (selected) {
             if (selected === glowing) {
-                addToModal(new THREE.Mesh(selected.geometry, selected.material));
-            }
-            else {
+                let geo = new THREE.Geometry().fromBufferGeometry(selected.geometry);
+                addToModal(new THREE.Mesh(geo, selected.material), selected.name);
+            } else {
                 goToObject(selected);
             }
         }
 
-        function addToModal(selectedObject) {
-            selectedObject.scale.set(3, 3, 3);
-            modalScene.add(selectedObject);
-            // modalCamera.position.y = 3;
-            modalCamera.position.z = -20;
-            modalCamera.lookAt(selectedObject.position);
+        function addToModal(mesh, name) {
+
+            mesh.material.forEach((mat) => {
+                mat.side = THREE.DoubleSide;
+                mat.opacity = 1;
+            });
+            mesh.scale.set(3, 3, 3);
+            mesh.name = "modalMesh";
+            modalScene.add(mesh);
+            meshOfModal = mesh;
+            modalCamera.position.set(0, 0, -20);
+            modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+            prepareDetailView(name.split("|"));
             overlayOn();
+        }
+
+        function prepareDetailView(info) {
+
+            let term = info[0], t = info[1], rank = info[2];
+            let docPos = infoForDetailView[t].position[rank], docId = infoForDetailView[t].id[rank];
+            $("#term").text(term);
+            docPoints = new THREE.Group();
+            docPoints.name = "docPoints";
+            docPos.forEach((pos, i) => {
+                let geometry = new THREE.SphereGeometry(0.3, 16, 16);
+                let material = new THREE.MeshLambertMaterial({
+                    // color: 0xe3e3e3,
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
+                let point = new THREE.Mesh(geometry, material);
+                point.position.set(pos.x * 3, pos.y * 3, pos.z * 3);
+                point.name = docNames[docId[i]];
+                docPoints.add(point);
+            });
+            docPoints.visible = false;
+            modalScene.add(docPoints);
         }
     }
 
     function onModalMouseDown(event) {
 
-        mouseDownPosition = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
+        isClick = true;
+        // mouseDownPosition = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
     }
 
     function onModalMouseUp(event) {
 
-        let mouse = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
-        if (mouse.distanceTo(mouseDownPosition) > 0.2) {
-            return; // prevent being triggered by control
+        // let mouse = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
+        // if (mouse.distanceTo(mouseDownPosition) > 0.1) {
+        //     return; // prevent being triggered by control
+        // }
+        if (isClick) {
+            let selected = checkIntersection(event, true);
+            if (selected === meshOfModal) {
+                if (isDefault) {
+                    toDetail();
+                } else {
+                    toDefault();
+                }
+            } else {
+                $.modal.close();
+            }
         }
-        let selected = checkIntersection(event, true);
-        if (!selected) {
-            $.modal.close();
+    }
+
+    function onModalMouseMove(event) {
+
+        isClick = false;
+
+        if (isDefault) {
+            return;
         }
-        else {
-            console.log(selected);
+
+        let rect = modalRenderer.domElement.getBoundingClientRect();
+        let x = ((event.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
+        let y = -((event.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
+        let vector = new THREE.Vector3(x, y - 0.4, 0.5);
+        vector.unproject(modalCamera);
+        let dir = vector.sub(modalCamera.position).normalize();
+        let dist = -modalCamera.position.z / dir.z;
+        let pos = modalCamera.position.clone().add(dir.multiplyScalar(dist));
+        mouseSprite.position.copy(pos);
+        let selected = checkIntersectPoints(event);
+        if (selected) {
+            $("#mouseSprite").text(selected.name).removeClass("hide");
+        } else {
+            $("#mouseSprite").addClass("hide");
+        }
+    }
+
+    function checkIntersectPoints(event) {
+
+        let mouse = new THREE.Vector2();
+        let rect = modalRenderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, modalCamera);
+        // modalScene.add(new THREE.ArrowHelper(raycaster.ray.direction, raycaster.ray.origin, 100, Math.random() * 0xffffff));
+        let intersects = raycaster.intersectObjects(docPoints.children, true);
+        if (intersects.length > 0) {
+            return intersects[0].object;
         }
     }
 
@@ -176,7 +257,11 @@ function init() {
         let x = event.changedTouches ? event.changedTouches[0].pageX : event.clientX;
         let y = event.changedTouches ? event.changedTouches[0].pageY : event.clientY;
         let mouse = new THREE.Vector2((x / width) * 2 - 1, -(y / height) * 2 + 1);
-        mouseDownPosition = mouse;
+        if (isModal) {
+            let rect = modalRenderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
+        }
         let castCamera = isModal ? modalCamera : camera;
         let castScene = isModal ? [modalScene] : [scene];
         raycaster.setFromCamera(mouse, castCamera);
@@ -186,7 +271,7 @@ function init() {
         }
     }
 
-    function loadModal() {
+    function initiateModal() {
 
         modalRenderer = new THREE.WebGLRenderer({
             alpha: true
@@ -196,15 +281,93 @@ function init() {
         modalRenderer.setClearColor(0x000000, 0);
         $("#faces").append(modalRenderer.domElement)
             .mouseup(onModalMouseUp)
-            .mousedown(onModalMouseDown);
-        modalScene = new THREE.Scene();
-        modalCamera = new THREE.PerspectiveCamera(85, width / height, 0.5, 150);
-        modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
-        modalControl.enableZoom = false;
+            .mousedown(onModalMouseDown)
+            .mousemove(onModalMouseMove);
 
+        modalScene = new THREE.Scene();
+
+        let light = new THREE.HemisphereLight(0xffffff, 0x777777, 1);
+        light.position.set(0, 50, 0);
+        modalScene.add(light);
+
+        modalCamera = new THREE.PerspectiveCamera(85, width / height, 0.5, 150);
+        modalCamera.position.z = -20;
+
+        modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
+        modalControl.minDistance = 3;
+        modalControl.maxDistance = 50;
+
+        modalTextRender = new THREE.CSS2DRenderer();
+        // modalTextRender = new THREE.CSS3DRenderer();
+        // labelRenderer.domElement.style.position = "absolute";
+        // labelRenderer.domElement.style.top = "0";
+        modalTextRender.setSize(width * 0.7, height * 0.6);
+        $("#faces").append(modalTextRender.domElement);
+
+        $("<div/>", {
+            id: "mouseSprite",
+            class: "doc hide",
+            text: "mouse_sprite"
+        }).appendTo("#faces");
+        mouseSprite = new THREE.CSS2DObject($("#mouseSprite")[0]);
+        // mouseSprite.scale.set(0.01, 0.01, 0.01);
+        modalScene.add(mouseSprite);
+
+        // mouseSprite = makeTextSprite(" Hello! ");
+        // modalScene.add(mouseSprite);
     }
 
-    function loadEffect() {
+//     function makeTextSprite(message) {
+//
+//         let canvas = document.createElement("canvas");
+//         let context = canvas.getContext("2d");
+//         context.font = "10px Monaco";
+//
+//         // get size data (height depends only on font size)
+//         let metrics = context.measureText(message);
+//         let textWidth = metrics.width;
+//
+//         // background color
+//         context.fillStyle = "rgba(0, 0, 0, 0.8)";
+//
+//         let borderThickness = 4;
+//         context.lineWidth = borderThickness;
+//         roundRect(context, borderThickness / 2, borderThickness / 2, textWidth + borderThickness, 10 * 1.4 + borderThickness, 6);
+//         // 1.4 is extra height factor for text below baseline: g,j,p,q.
+//
+//         // text color
+//         context.fillStyle = "rgba(1, 1, 1, 1.0)";
+//         context.fillText(message, borderThickness, 10 + borderThickness);
+//
+//         // canvas contents will be used for a texture
+//         let texture = new THREE.Texture(canvas)
+//         texture.needsUpdate = true;
+//
+//         let spriteMaterial = new THREE.SpriteMaterial({map: texture, useScreenCoordinates: false});
+//         let sprite = new THREE.Sprite(spriteMaterial);
+//         sprite.scale.set(100, 50, 1.0);
+//         return sprite;
+//     }
+//
+// // function for drawing rounded rectangles
+//     function roundRect(ctx, x, y, w, h, r) {
+//         ctx.beginPath();
+//         ctx.moveTo(x + r, y);
+//         ctx.lineTo(x + w - r, y);
+//         ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+//         ctx.lineTo(x + w, y + h - r);
+//         ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+//         ctx.lineTo(x + r, y + h);
+//         ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+//         ctx.lineTo(x, y + r);
+//         ctx.quadraticCurveTo(x, y, x + r, y);
+//         ctx.closePath();
+//         ctx.fill();
+//         ctx.stroke();
+//     }
+
+
+    function initiateEffect() {
 
         composer = new THREE.EffectComposer(renderer);
         let renderPass = new THREE.RenderPass(scene, camera);
@@ -222,6 +385,7 @@ function init() {
     }
 
     function loadDocNames() {
+
         let csv_file = "../data/doc_namelist.csv";
         Papa.parse(csv_file, {
             // preview: 100,
@@ -240,6 +404,7 @@ function init() {
     }
 
     function loadTopics() {
+
         let csvFile = "../data/topics/topics.csv";
         Papa.parse(csvFile, {
             // preview: 2,
@@ -287,6 +452,7 @@ function init() {
                                 side: THREE.DoubleSide
                             });
                             let mesh = new THREE.Mesh(geometry, material);
+                            mesh.name = "universe";
                             topicHull.add(mesh);
                         }
                         resolve();
@@ -294,7 +460,6 @@ function init() {
                 };
 
                 processTopics(results.data).then(createUniverseHull).then(() => {
-                    // console.log(topicGroups[0]);
                     console.log("terms:", Object.keys(termHulls));
                 }).catch((msg) => {
                     console.error(msg);
@@ -308,10 +473,10 @@ function init() {
 
         let csvFile = "../data/topics/topic_" + t + "_terms.csv";
         // let termsPerTopic = Math.round(100 * topicSize[t] * 10);
-        const termsPerTopic = Math.round(20 * topicSize[t] * 10);
+        // const termsPerTopic = Math.round(20 * topicSize[t] * 10);
+        const termsPerTopic = Math.round(5 * topicSize[t] * 10);
         let termDocs = loadTermDocs(t, termsPerTopic);
-        const termDocsPos = termDocs[0];
-        const termDocsId = termDocs[1];
+        infoForDetailView[t] = termDocs;
 
         const parseCsv = () => {
             return new Promise((resolve, reject) => {
@@ -341,7 +506,7 @@ function init() {
                 let faceMats = [];
                 let uvArray = new Float32Array(faceCount * 3 * 2);
                 const tan15 = Math.tan(Math.PI / 12);
-                const uvPerFace = [0, 0, tan15, 1, 1, tan15];
+                const uvPerFace = [0, 0, 1, tan15, tan15, 1];
                 geometry.clearGroups();
 
                 const createHull = () => {
@@ -357,9 +522,9 @@ function init() {
                                         map: tex,
                                         transparent: true,
                                         opacity: 0.7,
-                                        polygonOffset: true,
-                                        polygonOffsetFactor: 1., // positive value pushes polygon further away
-                                        polygonOffsetUnits: 4.
+                                        // polygonOffset: true,
+                                        // polygonOffsetFactor: 1., // positive value pushes polygon further away
+                                        // polygonOffsetUnits: 4.
                                     });
                                     resolve();
                                 },
@@ -369,9 +534,9 @@ function init() {
                                         color: 0xffffff,
                                         transparent: true,
                                         opacity: 0.2,
-                                        polygonOffset: true,
-                                        polygonOffsetFactor: 1., // positive value pushes polygon further away
-                                        polygonOffsetUnits: 4.
+                                        // polygonOffset: true,
+                                        // polygonOffsetFactor: 1., // positive value pushes polygon further away
+                                        // polygonOffsetUnits: 4.
                                     });
                                     resolve();
                                 }
@@ -395,6 +560,7 @@ function init() {
                     mesh.position.set(term.x, term.y, term.z);
                     mesh.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]); // so the shapes are same size
                     // mesh.scale.set(0.1 / topicSize[t], 0.1 / topicSize[t], 0.1 / topicSize[t]); // so the shapes are same size
+                    mesh.name = term.term + "|" + t + "|" + rank;
                     topicGroups[t].add(mesh);
 
                     // css label
@@ -408,8 +574,7 @@ function init() {
                     cssObject.position.set(term.x, term.y, term.z);
                     topicGroups[t].add(cssObject);
 
-                    // wireframe
-                    // (work with safari)
+                    // wireframe (work with safari)
 
                     // let geo = new THREE.Geometry().fromBufferGeometry(mesh.geometry);
                     // let mat = new THREE.MeshBasicMaterial({
@@ -436,17 +601,19 @@ function init() {
         };
 
         const createTopicHull = () => {
+
             return new Promise((resolve, reject) => {
                 let pos = topicGroups[t].position;
                 let scale = topicGroups[t].scale;
 
-                let geo = new THREE.SphereGeometry(0.3 / topicGroups[t].scale.x, 18, 12);
+                let geo = new THREE.SphereGeometry(0.3 / scale.x, 18, 12);
                 let mat = new THREE.MeshBasicMaterial({
                     color: hexColors[t],
                     transparent: true,
                     opacity: 0.5
                 });
                 let sphere = new THREE.Mesh(geo, mat);
+                sphere.name = "point" + t;
                 sphere.position.set(pos.x, pos.y, pos.z);
                 sphere.scale.set(scale.x, scale.y, scale.z);
                 topicHull.add(sphere);
@@ -459,19 +626,19 @@ function init() {
                 });
                 if (points.length >= 4) {
                     let geometry = new THREE.ConvexBufferGeometry(points);
-                    let material = new THREE.MeshPhongMaterial({
+                    let material = new THREE.MeshLambertMaterial({
                         color: hexColors[t],
                         transparent: true,
-                        opacity: 0.1,
+                        opacity: 0.2,
                         side: THREE.DoubleSide
                     });
                     let mesh = new THREE.Mesh(geometry, material);
-                    topicHulls[t] = mesh;
+                    // topicHulls[t] = mesh;
+                    mesh.name = "topic" + t;
                     mesh.position.set(pos.x, pos.y, pos.z);
                     mesh.scale.set(scale.x, scale.y, scale.z);
                     topicHull.add(mesh);
-                }
-                else {
+                } else {
                     console.log("topic", t, "has less than 4 docs to form a hull");
                 }
                 resolve();
@@ -485,6 +652,7 @@ function init() {
     }
 
     function loadTermDocs(t, termsPerTopic) {
+
         let csvFile = "../data/topics/topic_" + t + "_doc_points.csv";
         let pos = new Array(termsPerTopic);
         let docId = new Array(termsPerTopic);
@@ -526,6 +694,8 @@ function init() {
         });
         folderView.add(params, "term").onChange(function (value) {
             setLabelsVisibility(value);
+            // TODO: Set opacity of hulls to 0.3
+            // TODO: Labels face to camera
         });
         folderView.add(params, "topics").onChange(function (value) {
             topicHull.visible = value;
@@ -541,6 +711,7 @@ function init() {
     }
 
     function handleSearch(term) {
+
         term = term.toLowerCase();
         if (!(term in termHulls)) {
             console.log(term, "not exist");
@@ -561,10 +732,16 @@ function init() {
 
     function goToObject(obj) {
 
+        if (obj.name === "universe" || obj.name.startsWith("point")) {
+            return;
+        }
         let from = camera.position.clone();
         let to = new THREE.Vector3();
         obj.getWorldPosition(to);
         to.add(to.clone().setLength(1));
+        if (obj.name.startsWith("topic")) {
+            to = obj.localToWorld(obj.geometry.boundingSphere.center);
+        }
 
         let tween = new TWEEN.Tween(from)
             .to(to, 1000)
@@ -575,10 +752,17 @@ function init() {
             })
             .onComplete(function () {
                 camera.lookAt(new THREE.Vector3(0, 0, 0));
-                outlinePass.selectedObjects = [obj];
-                outlinePass.pulsePeriod = 2;
-                outlinePass.edgeGlow = 0.5;
-                glowing = obj;
+                if (obj.name.startsWith("topic")) {
+                    let t = parseInt(obj.name.split("topic")[1]);
+                    outlinePass.selectedObjects = [topicGroups[t]];
+                    outlinePass.pulsePeriod = 2;
+                    outlinePass.edgeGlow = 0.5;
+                } else {
+                    outlinePass.selectedObjects = [obj];
+                    outlinePass.pulsePeriod = 2;
+                    outlinePass.edgeGlow = 0.5;
+                    glowing = obj;
+                }
             })
             .start();
     }
@@ -595,9 +779,10 @@ function animate() {
         hulls.rotation.y += 0.05;
     }
 
-    modalRenderer.render(modalScene, modalCamera);
     composer.render();
     labelRenderer.render(scene, camera);
+    modalRenderer.render(modalScene, modalCamera);
+    modalTextRender.render(modalScene, modalCamera);
     control.update();
 
     stats.end();
@@ -625,6 +810,24 @@ function onWindowResize() {
     effectFXAA.uniforms["resolution"].value.set(1 / width, 1 / height);
 }
 
+function toDetail() {
+
+    meshOfModal.material.forEach((mat) => {
+        mat.opacity = 0.3;
+    });
+    isDefault = false;
+    docPoints.visible = true;
+}
+
+function toDefault(isClosing = false) {
+
+    meshOfModal.material.forEach((mat) => {
+        mat.opacity = isClosing ? 0.7 : 1;
+    });
+    isDefault = true;
+    docPoints.visible = false;
+}
+
 function overlayOn() {
 
     $("#faces").modal().on($.modal.CLOSE, function (event, modal) {
@@ -634,5 +837,7 @@ function overlayOn() {
 
 function overlayOff() {
 
-    modalScene.remove.apply(modalScene, modalScene.children);
+    toDefault(true);
+    modalScene.remove(modalScene.getObjectByName("modalMesh"));
+    modalScene.remove(modalScene.getObjectByName("docPoints"));
 }
