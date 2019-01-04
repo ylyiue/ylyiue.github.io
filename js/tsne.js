@@ -473,8 +473,8 @@ function init() {
 
         let csvFile = "../data/topics/topic_" + t + "_terms.csv";
         // let termsPerTopic = Math.round(100 * topicSize[t] * 10);
-        // const termsPerTopic = Math.round(20 * topicSize[t] * 10);
-        const termsPerTopic = Math.round(5 * topicSize[t] * 10);
+        const termsPerTopic = Math.round(20 * topicSize[t] * 10);
+        // const termsPerTopic = Math.round(5 * topicSize[t] * 10);
         let termDocs = loadTermDocs(t, termsPerTopic);
         infoForDetailView[t] = termDocs;
 
