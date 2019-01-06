@@ -161,7 +161,7 @@ function init() {
             mesh.name = "modalMesh";
             modalScene.add(mesh);
             meshOfModal = mesh;
-            prepareDetailView(name.split("|"));
+            prepareTranslucentView(name.split("|"));
             prepareUnfoldView(mesh);
             toDefault();
             modalCamera.position.set(0, 0, 5);
@@ -189,7 +189,9 @@ function init() {
                     new THREE.Vector2(uvPerFace[2], uvPerFace[3]),
                     new THREE.Vector2(uvPerFace[4], uvPerFace[5])
                 ]];
-                let triangle = new THREE.Mesh(g, mesh.material[i].clone());
+                let m = mesh.material[i].clone();
+                m.side = THREE.DoubleSide;
+                let triangle = new THREE.Mesh(g, m);
                 triangle.position.set(o.x, o.y, o.z);
                 triangles.add(triangle);
             });
@@ -216,7 +218,7 @@ function init() {
 
         }
 
-        function prepareDetailView(info) {
+        function prepareTranslucentView(info) {
 
             let term = info[0], t = info[1], rank = info[2];
             let docPos = infoForDetailView[t].position[rank], docId = infoForDetailView[t].id[rank];
