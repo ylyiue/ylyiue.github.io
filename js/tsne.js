@@ -4,6 +4,7 @@ let textureLoader = new THREE.TextureLoader();
 let composer, outlinePass, effectFXAA, glowing;
 let raycaster = new THREE.Raycaster(), isClick = false;
 
+const amount = 20;
 const tan15 = Math.tan(Math.PI / 12);
 const uvPerFace = [0, 0, 1, tan15, tan15, 1];
 
@@ -586,8 +587,7 @@ function init() {
 
         let csvFile = "../data/topics/topic_" + t + "_terms.csv";
         // let termsPerTopic = Math.round(100 * topicSize[t] * 10);
-        // const termsPerTopic = Math.round(20 * topicSize[t] * 10);
-        const termsPerTopic = Math.round(3 * topicSize[t] * 10);
+        const termsPerTopic = Math.round(amount * topicSize[t] * 10);
         let termDocs = loadTermDocs(t, termsPerTopic);
         infoForDetailView[t] = termDocs;
 
