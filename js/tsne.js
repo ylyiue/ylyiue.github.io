@@ -2,10 +2,19 @@ let container, camera, scene, renderer, labelRenderer, control, stats, axesHelpe
 // let textureLoader = new THREE.DDSLoader();
 let textureLoader = new THREE.TextureLoader();
 let composer, outlinePass, effectFXAA, glowing;
-let raycaster = new THREE.Raycaster(), mouseDownPosition, isClick = false;
+let raycaster = new THREE.Raycaster(), isClick = false;
+
+const tan15 = Math.tan(Math.PI / 12);
+const uvPerFace = [0, 0, 1, tan15, tan15, 1];
+
+const ModalView = {
+    DEFAULT: 0,
+    UNFOLD: 1,
+    TRANSLUCENT: 2
+};
 
 let modalRenderer, modalTextRender, modalScene, modalCamera, modalControl, mouseSprite;
-let meshOfModal = null, isDefault = true, docPoints;
+let meshOfModal = null, state = ModalView.DEFAULT, docPoints, triangles, tweenInfo, transitionGroup;
 
 let params = {
     rotate: false,
@@ -23,7 +32,7 @@ let topicSize = [];
 let rgbColors = ["7, 153, 146", "96, 163, 188", "12, 36, 97", "246, 185, 59", "120, 224, 143",
     "229, 142, 38", "183, 21, 64", "229, 80, 57", "10, 61, 98", "74, 105, 189"];
 let hexColors = [0xF79F1F, 0xA3CB38, 0x1289A7, 0xD980FA, 0xB53471, 0xEA2027, 0x006266, 0x1B1464, 0x5758BB, 0x6F1E51];
-let docNames = [];
+let docInfo = [];
 let termHulls = {};
 let infoForDetailView = new Array(10);
 // let topicHulls = new Array(10);
@@ -87,7 +96,7 @@ function init() {
     // load topic hulls & texts
 
     hulls.add(topicHull);
-    loadDocNames();
+    loadDocInfo();
     scene.add(hulls);
     scene.add(labels);
 
@@ -148,18 +157,62 @@ function init() {
 
         function addToModal(mesh, name) {
 
-            mesh.material.forEach((mat) => {
-                mat.side = THREE.DoubleSide;
-                mat.opacity = 1;
-            });
-            mesh.scale.set(3, 3, 3);
             mesh.name = "modalMesh";
             modalScene.add(mesh);
             meshOfModal = mesh;
-            modalCamera.position.set(0, 0, -20);
-            modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
             prepareDetailView(name.split("|"));
+            prepareUnfoldView(mesh);
+            toDefault();
+            modalCamera.position.set(0, 0, 5);
+            modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
             overlayOn();
+        }
+
+        function prepareUnfoldView(mesh) {
+
+            triangles = new THREE.Group();
+            triangles.name = "triangles";
+
+            mesh.geometry.faces.forEach((f, i) => {
+                let g = new THREE.Geometry();
+                let a = mesh.geometry.vertices[f.a], b = mesh.geometry.vertices[f.b], c = mesh.geometry.vertices[f.c];
+                let o = new THREE.Vector3((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, (a.z + b.z + c.z) / 3);
+                g.vertices = [
+                    new THREE.Vector3().subVectors(a, o),
+                    new THREE.Vector3().subVectors(b, o),
+                    new THREE.Vector3().subVectors(c, o)
+                ];
+                g.faces = [new THREE.Face3(0, 1, 2)];
+                g.faceVertexUvs[0] = [[
+                    new THREE.Vector2(uvPerFace[0], uvPerFace[1]),
+                    new THREE.Vector2(uvPerFace[2], uvPerFace[3]),
+                    new THREE.Vector2(uvPerFace[4], uvPerFace[5])
+                ]];
+                let triangle = new THREE.Mesh(g, mesh.material[i].clone());
+                triangle.position.set(o.x, o.y, o.z);
+                triangles.add(triangle);
+            });
+            modalScene.add(triangles);
+
+            tweenInfo = new Array(triangles.children.length);
+            triangles.children.forEach((tr, i) => {
+                // 9 * 4
+                let des = new THREE.Vector3(-20 + 5 * (i % 9), 7.5 - 5 * Math.floor(i / 9), 0);
+                let a = tr.geometry.vertices[0], b = tr.geometry.vertices[1], c = tr.geometry.vertices[2];
+                let bc = new THREE.Vector3().subVectors(c, b), ba = new THREE.Vector3().subVectors(a, b);
+                let normal = new THREE.Vector3().crossVectors(bc, ba).normalize();
+                let quaternion = new THREE.Quaternion().setFromUnitVectors(normal, new THREE.Vector3(0, 0, 1));
+
+                let pDefault = new THREE.Vector3(), qDefault = new THREE.Quaternion();
+                tweenInfo[i] = {
+                    posDefault: pDefault.copy(tr.position),
+                    posUnfold: new THREE.Vector3(des.x, des.y, des.z),
+                    quDefault: qDefault.copy(tr.quaternion),
+                    quUnfold: quaternion
+                };
+            });
+            triangles.visible = false;
+
         }
 
         function prepareDetailView(info) {
@@ -170,15 +223,12 @@ function init() {
             docPoints = new THREE.Group();
             docPoints.name = "docPoints";
             docPos.forEach((pos, i) => {
-                let geometry = new THREE.SphereGeometry(0.3, 16, 16);
-                let material = new THREE.MeshLambertMaterial({
-                    // color: 0xe3e3e3,
-                    color: 0xffffff,
-                    side: THREE.DoubleSide
-                });
+                let geometry = new THREE.SphereGeometry(0.1, 16, 16);
+                let material = new THREE.MeshLambertMaterial({color: 0xffffff});
                 let point = new THREE.Mesh(geometry, material);
-                point.position.set(pos.x * 3, pos.y * 3, pos.z * 3);
-                point.name = docNames[docId[i]];
+                point.position.set(pos.x, pos.y, pos.z);
+                let artist = docInfo[docId[i]].category === 0 ? docInfo[docId[i]].artist + " - " : ""
+                ;point.name = artist + docInfo[docId[i]].title;
                 docPoints.add(point);
             });
             docPoints.visible = false;
@@ -189,51 +239,162 @@ function init() {
     function onModalMouseDown(event) {
 
         isClick = true;
-        // mouseDownPosition = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
     }
 
     function onModalMouseUp(event) {
 
-        // let mouse = new THREE.Vector2((event.clientX / width) * 2 - 1, -(event.clientY / height) * 2 + 1);
-        // if (mouse.distanceTo(mouseDownPosition) > 0.1) {
-        //     return; // prevent being triggered by control
-        // }
         if (isClick) {
-            let selected = checkIntersection(event, true);
-            if (selected === meshOfModal) {
-                if (isDefault) {
-                    toDetail();
-                } else {
+            switch (state) {
+                case ModalView.DEFAULT:
+                    toUnfold();
+                    break;
+                case ModalView.UNFOLD:
+                    toTranslucent();
+                    break;
+                case ModalView.TRANSLUCENT:
                     toDefault();
-                }
-            } else {
-                $.modal.close();
+                    break;
+                default:
+                    console.error("weird state");
             }
+            // let selected = checkIntersection(event, true);
+            // if (selected === meshOfModal) {
+            //     if (isDefault) {
+            //         toDetail();
+            //     } else {
+            //         toDefault();
+            //     }
+            // } else {
+            //     $.modal.close();
+            // }
         }
+    }
+
+    function toDefault() {
+
+        state = ModalView.DEFAULT;
+
+        $("#mouseSprite").addClass("hide");
+
+        meshOfModal.material.forEach((mat) => {
+            mat.opacity = 1;
+        });
+        meshOfModal.visible = true;
+        docPoints.visible = false;
+    }
+
+    function toUnfold() {
+
+        state = ModalView.UNFOLD;
+
+        meshOfModal.visible = false;
+        triangles.visible = true;
+
+        viewTransition(true);
+        // modalCamera.position.set(0, 0, 15);
+        // modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+    }
+
+    function toTranslucent() {
+
+        state = ModalView.TRANSLUCENT;
+
+        viewTransition(false);
+
+        meshOfModal.material.forEach((mat) => {
+            mat.opacity = 0.3;
+        });
+
+    }
+
+    function viewTransition(toUnfold) {
+
+        // transitionGroup = new TWEEN.Group();
+        const duration = 1500;
+
+        // triangles
+        triangles.children.forEach((tr, i) => {
+
+            // tranlation
+            let posFrom = new THREE.Vector3();
+            posFrom.copy(tr.position);
+            // let posFrom = toUnfold ? tweenInfo[i].posDefault : tweenInfo[i].posUnfold;
+            let posTo = toUnfold ? tweenInfo[i].posUnfold : tweenInfo[i].posDefault;
+
+            let posTween = new TWEEN.Tween(posFrom)
+                .to(posTo, duration)
+                .easing(TWEEN.Easing.Linear.None)
+                .onUpdate(function () {
+                    tr.position.set(this.x, this.y, this.z);
+                })
+                .onComplete(function () {
+                    tr.position.set(posTo.x, posTo.y, posTo.z);
+                })
+                .start();
+
+            let qFrom = new THREE.Quaternion();
+            qFrom.copy(tr.quaternion);
+            // let qFrom = toUnfold ? tweenInfo[i].quDefault : tweenInfo[i].quUnfold;
+            let qTo = toUnfold ? tweenInfo[i].quUnfold : tweenInfo[i].quDefault;
+
+            let qTween = new TWEEN.Tween(0)
+                .to(1, duration)
+                .easing(TWEEN.Easing.Linear.None)
+                .onUpdate(function () {
+                    // tr.setRotationFromQuaternion(this);
+                    THREE.Quaternion.slerp(qFrom, qTo, tr.quaternion, this);
+                })
+                .onComplete(function () {
+                    tr.setRotationFromQuaternion(qTo);
+                })
+                .start();
+        });
+
+        // camera
+        let camFrom = modalCamera.position.clone();
+        let camTo = toUnfold ? new THREE.Vector3(0, 0, 20) : new THREE.Vector3(0, 0, 7);
+
+        let camTween = new TWEEN.Tween(camFrom)
+            .to(camTo, duration)
+            .easing(TWEEN.Easing.Linear.None)
+            .onUpdate(function () {
+                modalCamera.position.set(this.x, this.y, this.z);
+                modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+            })
+            .onComplete(function () {
+                modalCamera.position.set(camTo.x, camTo.y, camTo.z);
+                modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+                if (!toUnfold) {
+                    meshOfModal.visible = true;
+                    docPoints.visible = true;
+                    triangles.visible = false;
+                }
+            }).start();
+
+        // transitionGroup.start();
     }
 
     function onModalMouseMove(event) {
 
         isClick = false;
 
-        if (isDefault) {
-            return;
-        }
+        if (state === ModalView.TRANSLUCENT) {
+            let rect = modalRenderer.domElement.getBoundingClientRect();
+            let x = ((event.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
+            let y = -((event.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
 
-        let rect = modalRenderer.domElement.getBoundingClientRect();
-        let x = ((event.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
-        let y = -((event.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
-        let vector = new THREE.Vector3(x, y - 0.4, 0.5);
-        vector.unproject(modalCamera);
-        let dir = vector.sub(modalCamera.position).normalize();
-        let dist = -modalCamera.position.z / dir.z;
-        let pos = modalCamera.position.clone().add(dir.multiplyScalar(dist));
-        mouseSprite.position.copy(pos);
-        let selected = checkIntersectPoints(event);
-        if (selected) {
-            $("#mouseSprite").text(selected.name).removeClass("hide");
-        } else {
-            $("#mouseSprite").addClass("hide");
+            let vector = new THREE.Vector3(x, y - 0.4, 0.5);
+            vector.unproject(modalCamera);
+            let dir = vector.sub(modalCamera.position).normalize();
+            let dist = -modalCamera.position.z / dir.z;
+            let pos = modalCamera.position.clone().add(dir.multiplyScalar(dist));
+            mouseSprite.position.copy(pos);
+            let selected = checkIntersectPoints(event);
+            if (selected) {
+                $("#mouseSprite").text(selected.name).removeClass("hide");
+            } else {
+                $("#mouseSprite").addClass("hide");
+            }
         }
     }
 
@@ -277,7 +438,7 @@ function init() {
             alpha: true
         });
         modalRenderer.setPixelRatio(window.devicePixelRatio);
-        modalRenderer.setSize(width * 0.7, height * 0.6);
+        modalRenderer.setSize(width * 0.8, height * 0.6);
         modalRenderer.setClearColor(0x000000, 0);
         $("#faces").append(modalRenderer.domElement)
             .mouseup(onModalMouseUp)
@@ -291,17 +452,13 @@ function init() {
         modalScene.add(light);
 
         modalCamera = new THREE.PerspectiveCamera(85, width / height, 0.5, 150);
-        modalCamera.position.z = -20;
 
         modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
-        modalControl.minDistance = 3;
-        modalControl.maxDistance = 50;
+        modalControl.minDistance = 0.5;
+        modalControl.maxDistance = 30;
 
         modalTextRender = new THREE.CSS2DRenderer();
-        // modalTextRender = new THREE.CSS3DRenderer();
-        // labelRenderer.domElement.style.position = "absolute";
-        // labelRenderer.domElement.style.top = "0";
-        modalTextRender.setSize(width * 0.7, height * 0.6);
+        modalTextRender.setSize(width * 0.8, height * 0.6);
         $("#faces").append(modalTextRender.domElement);
 
         $("<div/>", {
@@ -313,59 +470,8 @@ function init() {
         // mouseSprite.scale.set(0.01, 0.01, 0.01);
         modalScene.add(mouseSprite);
 
-        // mouseSprite = makeTextSprite(" Hello! ");
-        // modalScene.add(mouseSprite);
+        // modalScene.add(new THREE.AxesHelper(10));
     }
-
-//     function makeTextSprite(message) {
-//
-//         let canvas = document.createElement("canvas");
-//         let context = canvas.getContext("2d");
-//         context.font = "10px Monaco";
-//
-//         // get size data (height depends only on font size)
-//         let metrics = context.measureText(message);
-//         let textWidth = metrics.width;
-//
-//         // background color
-//         context.fillStyle = "rgba(0, 0, 0, 0.8)";
-//
-//         let borderThickness = 4;
-//         context.lineWidth = borderThickness;
-//         roundRect(context, borderThickness / 2, borderThickness / 2, textWidth + borderThickness, 10 * 1.4 + borderThickness, 6);
-//         // 1.4 is extra height factor for text below baseline: g,j,p,q.
-//
-//         // text color
-//         context.fillStyle = "rgba(1, 1, 1, 1.0)";
-//         context.fillText(message, borderThickness, 10 + borderThickness);
-//
-//         // canvas contents will be used for a texture
-//         let texture = new THREE.Texture(canvas)
-//         texture.needsUpdate = true;
-//
-//         let spriteMaterial = new THREE.SpriteMaterial({map: texture, useScreenCoordinates: false});
-//         let sprite = new THREE.Sprite(spriteMaterial);
-//         sprite.scale.set(100, 50, 1.0);
-//         return sprite;
-//     }
-//
-// // function for drawing rounded rectangles
-//     function roundRect(ctx, x, y, w, h, r) {
-//         ctx.beginPath();
-//         ctx.moveTo(x + r, y);
-//         ctx.lineTo(x + w - r, y);
-//         ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-//         ctx.lineTo(x + w, y + h - r);
-//         ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-//         ctx.lineTo(x + r, y + h);
-//         ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-//         ctx.lineTo(x, y + r);
-//         ctx.quadraticCurveTo(x, y, x + r, y);
-//         ctx.closePath();
-//         ctx.fill();
-//         ctx.stroke();
-//     }
-
 
     function initiateEffect() {
 
@@ -384,7 +490,7 @@ function init() {
         composer.addPass(effectFXAA);
     }
 
-    function loadDocNames() {
+    function loadDocInfo() {
 
         let csv_file = "../data/doc_namelist.csv";
         Papa.parse(csv_file, {
@@ -395,8 +501,15 @@ function init() {
             skipEmptyLines: true,
             download: true,
             complete: function (results) {
+                // console.log(results);
                 results.data.forEach(function (doc) {
-                    docNames[doc.id] = doc.name;
+                    // docNames[doc.id] = doc.name;
+                    docInfo[doc.id] = {
+                        name: doc.name,
+                        title: doc.title,
+                        artist: doc.artist,
+                        category: doc.category
+                    };
                 });
                 loadTopics();
             }
@@ -473,8 +586,8 @@ function init() {
 
         let csvFile = "../data/topics/topic_" + t + "_terms.csv";
         // let termsPerTopic = Math.round(100 * topicSize[t] * 10);
-        const termsPerTopic = Math.round(20 * topicSize[t] * 10);
-        // const termsPerTopic = Math.round(5 * topicSize[t] * 10);
+        // const termsPerTopic = Math.round(20 * topicSize[t] * 10);
+        const termsPerTopic = Math.round(3 * topicSize[t] * 10);
         let termDocs = loadTermDocs(t, termsPerTopic);
         infoForDetailView[t] = termDocs;
 
@@ -505,14 +618,14 @@ function init() {
                 const faceCount = geometry.getAttribute("position").count / 3;
                 let faceMats = [];
                 let uvArray = new Float32Array(faceCount * 3 * 2);
-                const tan15 = Math.tan(Math.PI / 12);
-                const uvPerFace = [0, 0, 1, tan15, tan15, 1];
                 geometry.clearGroups();
 
                 const createHull = () => {
                     const loadTexture = (i) => {
                         return new Promise((resolve, reject) => {
-                            let path = "../data/img/" + docNames[termDocs.id[rank][i]] + ".jpg";
+                            // FIXME: some file may not exist
+                            let fileName = docInfo[termDocs.id[rank][i]] ? docInfo[termDocs.id[rank][i]].name : "";
+                            let path = "../data/img/" + fileName + ".jpg";
                             uvArray.set(uvPerFace, i * 6);
                             geometry.addGroup(i * 3, 3, i);
                             let texture = textureLoader.load(
@@ -771,6 +884,7 @@ function init() {
 function animate() {
 
     TWEEN.update();
+    // transitionGroup.update();
     requestAnimationFrame(animate);
 
     stats.begin();
@@ -810,24 +924,6 @@ function onWindowResize() {
     effectFXAA.uniforms["resolution"].value.set(1 / width, 1 / height);
 }
 
-function toDetail() {
-
-    meshOfModal.material.forEach((mat) => {
-        mat.opacity = 0.3;
-    });
-    isDefault = false;
-    docPoints.visible = true;
-}
-
-function toDefault(isClosing = false) {
-
-    meshOfModal.material.forEach((mat) => {
-        mat.opacity = isClosing ? 0.7 : 1;
-    });
-    isDefault = true;
-    docPoints.visible = false;
-}
-
 function overlayOn() {
 
     $("#faces").modal().on($.modal.CLOSE, function (event, modal) {
@@ -837,7 +933,11 @@ function overlayOn() {
 
 function overlayOff() {
 
-    toDefault(true);
+    $("#mouseSprite").addClass("hide");
+    meshOfModal.material.forEach((mat) => {
+        mat.opacity = 0.7;
+    });
     modalScene.remove(modalScene.getObjectByName("modalMesh"));
     modalScene.remove(modalScene.getObjectByName("docPoints"));
+    modalScene.remove(modalScene.getObjectByName("triangles"));
 }
