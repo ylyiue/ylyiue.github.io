@@ -190,8 +190,11 @@ function init() {
                     new THREE.Vector2(uvPerFace[4], uvPerFace[5])
                 ]];
                 let m = mesh.material[i].clone();
+                // console.log(m)
                 m.side = THREE.DoubleSide;
                 let triangle = new THREE.Mesh(g, m);
+                let artist = docInfo[m.map.name].category === 0 ? docInfo[m.map.name].artist + " - " : "";
+                triangle.name = artist + docInfo[m.map.name].title;
                 triangle.position.set(o.x, o.y, o.z);
                 triangles.add(triangle);
             });
@@ -230,8 +233,8 @@ function init() {
                 let material = new THREE.MeshLambertMaterial({color: 0xffffff});
                 let point = new THREE.Mesh(geometry, material);
                 point.position.set(pos.x, pos.y, pos.z);
-                let artist = docInfo[docId[i]].category === 0 ? docInfo[docId[i]].artist + " - " : ""
-                ;point.name = artist + docInfo[docId[i]].title;
+                let artist = docInfo[docId[i]].category === 0 ? docInfo[docId[i]].artist + " - " : "";
+                point.name = artist + docInfo[docId[i]].title;
                 docPoints.add(point);
             });
             docPoints.visible = false;
@@ -302,6 +305,8 @@ function init() {
 
         state = ModalView.TRANSLUCENT;
 
+        $("#mouseSprite").addClass("hide");
+
         viewTransition(false);
 
         meshOfModal.material.forEach((mat) => {
@@ -313,7 +318,7 @@ function init() {
     function viewTransition(toUnfold) {
 
         // transitionGroup = new TWEEN.Group();
-        const duration = 1500;
+        const duration = 1000;
 
         // triangles
         triangles.children.forEach((tr, i) => {
@@ -337,14 +342,12 @@ function init() {
 
             let qFrom = new THREE.Quaternion();
             qFrom.copy(tr.quaternion);
-            // let qFrom = toUnfold ? tweenInfo[i].quDefault : tweenInfo[i].quUnfold;
             let qTo = toUnfold ? tweenInfo[i].quUnfold : tweenInfo[i].quDefault;
 
             let qTween = new TWEEN.Tween(0)
                 .to(1, duration)
                 .easing(TWEEN.Easing.Linear.None)
                 .onUpdate(function () {
-                    // tr.setRotationFromQuaternion(this);
                     THREE.Quaternion.slerp(qFrom, qTo, tr.quaternion, this);
                 })
                 .onComplete(function () {
@@ -355,7 +358,7 @@ function init() {
 
         // camera
         let camFrom = modalCamera.position.clone();
-        let camTo = toUnfold ? new THREE.Vector3(0, 0, 20) : new THREE.Vector3(0, 0, 7);
+        let camTo = toUnfold ? new THREE.Vector3(0, 0, 17) : new THREE.Vector3(0, 0, 7);
 
         let camTween = new TWEEN.Tween(camFrom)
             .to(camTo, duration)
@@ -367,7 +370,7 @@ function init() {
             .onComplete(function () {
                 modalCamera.position.set(camTo.x, camTo.y, camTo.z);
                 modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
-                if (!toUnfold) {
+                if (!toUnfold && state === ModalView.TRANSLUCENT) {
                     meshOfModal.visible = true;
                     docPoints.visible = true;
                     triangles.visible = false;
@@ -381,7 +384,7 @@ function init() {
 
         isClick = false;
 
-        if (state === ModalView.TRANSLUCENT) {
+        if (state === ModalView.TRANSLUCENT || state === ModalView.UNFOLD) {
             let rect = modalRenderer.domElement.getBoundingClientRect();
             let x = ((event.clientX - rect.left) / (rect.right - rect.left)) * 2 - 1;
             let y = -((event.clientY - rect.top) / (rect.bottom - rect.top)) * 2 + 1;
@@ -392,7 +395,7 @@ function init() {
             let dist = -modalCamera.position.z / dir.z;
             let pos = modalCamera.position.clone().add(dir.multiplyScalar(dist));
             mouseSprite.position.copy(pos);
-            let selected = checkIntersectPoints(event);
+            let selected = checkIntersectPoints(event, state === ModalView.UNFOLD);
             if (selected) {
                 $("#mouseSprite").text(selected.name).removeClass("hide");
             } else {
@@ -401,7 +404,7 @@ function init() {
         }
     }
 
-    function checkIntersectPoints(event) {
+    function checkIntersectPoints(event, isUnfold) {
 
         let mouse = new THREE.Vector2();
         let rect = modalRenderer.domElement.getBoundingClientRect();
@@ -410,7 +413,8 @@ function init() {
 
         raycaster.setFromCamera(mouse, modalCamera);
         // modalScene.add(new THREE.ArrowHelper(raycaster.ray.direction, raycaster.ray.origin, 100, Math.random() * 0xffffff));
-        let intersects = raycaster.intersectObjects(docPoints.children, true);
+        let candidates = isUnfold ? triangles.children : docPoints.children;
+        let intersects = raycaster.intersectObjects(candidates, true);
         if (intersects.length > 0) {
             return intersects[0].object;
         }
@@ -444,9 +448,15 @@ function init() {
         modalRenderer.setSize(width * 0.8, height * 0.6);
         modalRenderer.setClearColor(0x000000, 0);
         $("#faces").append(modalRenderer.domElement)
-            .mouseup(onModalMouseUp)
-            .mousedown(onModalMouseDown)
-            .mousemove(onModalMouseMove);
+
+        modalRenderer.domElement.addEventListener("mousedown", onModalMouseDown);
+        modalRenderer.domElement.addEventListener("mouseup", onModalMouseUp);
+        modalRenderer.domElement.addEventListener("mousemove", onModalMouseMove);
+
+        // modalRenderer.domElement
+        //     .mouseup(onModalMouseUp)
+        //     .mousedown(onModalMouseDown)
+        //     .mousemove(onModalMouseMove);
 
         modalScene = new THREE.Scene();
 
@@ -633,6 +643,7 @@ function init() {
                             let texture = textureLoader.load(
                                 path,
                                 function (tex) {
+                                    tex.name = termDocs.id[rank][i];
                                     faceMats[i] = new THREE.MeshBasicMaterial({
                                         map: tex,
                                         transparent: true,
