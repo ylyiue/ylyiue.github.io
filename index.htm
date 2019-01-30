@@ -12,7 +12,9 @@
 <body>
 
 <div id="faces" class="modal">
-    <p id="term" style="color: #aaaaaa; text-align: center; font: 30px Monaco;">hello!</p>
+    <p id="term" onclick="markHullsWithTerm(this);" style="cursor: pointer; color: #aaaaaa; text-align: center; font: 30px Monaco;">hello!</p>
+    <!--<p id="term" style="color: #aaaaaa; text-align: center; font: 30px Monaco;">hello!</p>-->
+    <!--<a id="term" href="#" onclick="markHullsWithTerm(this);" style="color: #aaaaaa; text-align: center; font: 30px Monaco;">hello!</>-->
     <!--<a href="#" rel="modal:close">Close</a>-->
 </div>
 
@@ -46,6 +48,8 @@
 <script src="js/libs/jquery.modal.min.js"></script>
 <script src="js/libs/tween.min.js"></script>
 <!--<script src="//unpkg.com/three-spritetext"></script>-->
+<script src="js/FirstPersonControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.6/dist/loadingoverlay.min.js"></script>
 <script src="js/tsne.js"></script>
 
 </body>

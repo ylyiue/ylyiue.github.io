@@ -14,8 +14,8 @@ const ModalView = {
     TRANSLUCENT: 2
 };
 
-let modalRenderer, modalTextRender, modalScene, modalCamera, modalControl, mouseSprite;
-let meshOfModal = null, state = ModalView.DEFAULT, docPoints, triangles, tweenInfo, transitionGroup;
+let modalRenderer, modalTextRender, modalScene, modalCamera, modalControl, mouseSprite, clock;
+let meshOfModal = null, state = ModalView.DEFAULT, docPoints, triangles, tweenInfo;
 
 let params = {
     rotate: false,
@@ -24,19 +24,23 @@ let params = {
     hull: true,
     term: false,
     topics: false,
+    night: false,
     keyword: "(terms in console)"
 };
 
 let hulls = new THREE.Group(), topicHull = new THREE.Group(), labels = new THREE.Group();
-let topicGroups = [];
+let topicGroupsForPlain = [];
+let topicGroupsForImage = [];
 let topicSize = [];
 let rgbColors = ["7, 153, 146", "96, 163, 188", "12, 36, 97", "246, 185, 59", "120, 224, 143",
     "229, 142, 38", "183, 21, 64", "229, 80, 57", "10, 61, 98", "74, 105, 189"];
-let hexColors = [0xF79F1F, 0xA3CB38, 0x1289A7, 0xD980FA, 0xB53471, 0xEA2027, 0x006266, 0x1B1464, 0x5758BB, 0x6F1E51];
+// let hexColors = [0xF79F1F, 0xA3CB38, 0x1289A7, 0xD980FA, 0xB53471, 0xEA2027, 0x006266, 0x1B1464, 0x5758BB, 0x6F1E51];
 let docInfo = [];
+let termHullsImage = {};
 let termHulls = {};
 let infoForDetailView = new Array(10);
 // let topicHulls = new Array(10);
+let loading = 0;
 
 init();
 animate();
@@ -45,6 +49,36 @@ function init() {
 
     container = document.createElement("div");
     document.body.appendChild(container);
+    //
+    // $.LoadingOverlaySetup({
+    //     background: "rgba(0, 0, 0, 0.8)",
+    //     // size: 0,
+    //     image: "",
+    //     progress: true,
+    //     progressAutoResize: true,
+    //     progressResizeFactor: 0.05,
+    //     progressColor: "rgba(220, 220, 220, 0.8)",
+    //     progressOrder: 1,
+    //     progressSpeed: 500,
+    //     progressFixedPosition: "50% top",
+    // });
+    //
+    // $.LoadingOverlay("show");
+
+    $.LoadingOverlay("show", {
+        background: "rgba(0, 0, 0, 0.8)",
+        // size: 0,
+        image: "",
+        progress: true,
+        progressAutoResize: true,
+        progressResizeFactor: 0.05,
+        progressColor: "rgba(220, 220, 220, 0.8)",
+        progressOrder: 1,
+        progressSpeed: 500,
+        progressFixedPosition: "50% top"
+    });
+    loading += 10;
+    $.LoadingOverlay("progress", loading);
 
     // webGL
 
@@ -66,7 +100,9 @@ function init() {
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xe3e3e3);
-    // scene.background = new THREE.Color(0xf0f0f0);
+    // scene.background = new THREE.Color(0x111111);
+    // scene.fog = new THREE.Fog(0x111111, 10, 50);
+    scene.fog = new THREE.Fog(0xe3e3e3, 20, 50);
     axesHelper = new THREE.AxesHelper(10);
     scene.add(axesHelper);
 
@@ -133,6 +169,7 @@ function init() {
         let selected = checkIntersection(event);
         if (selected) {
             if (selected.name === "universe" || selected.name.startsWith("point")) {
+                container.style.cursor = "default";
                 return;
             }
             if (selected !== glowing) {
@@ -140,17 +177,25 @@ function init() {
                 outlinePass.pulsePeriod = 0;
                 glowing = null;
             }
+            container.style.cursor = "pointer";
             outlinePass.selectedObjects = [selected];
+        } else {
+            container.style.cursor = "default";
         }
     }
 
     function onMainClick(event) {
 
+        // console.log(camera.position)
+
         let selected = checkIntersection(event);
         if (selected) {
             if (selected === glowing) {
-                let geo = new THREE.Geometry().fromBufferGeometry(selected.geometry);
-                addToModal(new THREE.Mesh(geo, selected.material), selected.name);
+                let term = selected.name.split("|")[0];
+                let mat = termHullsImage[term].material;
+                let geo = new THREE.Geometry().fromBufferGeometry(termHullsImage[term].geometry);
+                addToModal(new THREE.Mesh(geo, mat), selected.name);
+                // addToModal(termHullsImage[term], selected.name);
             } else {
                 goToObject(selected);
             }
@@ -161,11 +206,22 @@ function init() {
             mesh.name = "modalMesh";
             modalScene.add(mesh);
             meshOfModal = mesh;
+            mesh.geometry.faceVertexUvs[0] = [];
+            mesh.geometry.faces.forEach(() => {
+                mesh.geometry.faceVertexUvs[0].push([
+                    new THREE.Vector2(uvPerFace[0], uvPerFace[1]),
+                    new THREE.Vector2(uvPerFace[2], uvPerFace[3]),
+                    new THREE.Vector2(uvPerFace[4], uvPerFace[5])
+                ]);
+            });
             prepareTranslucentView(name.split("|"));
             prepareUnfoldView(mesh);
             toDefault();
-            modalCamera.position.set(0, 0, 5);
-            modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+            mesh.scale.set(20, 20, 20);
+            modalCamera.position.set(0, 0, 0);
+            // modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+            // modalCamera.position.set(0, 0, 7);
+            // modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
             overlayOn();
         }
 
@@ -191,7 +247,7 @@ function init() {
                 ]];
                 let m = mesh.material[i].clone();
                 // console.log(m)
-                m.side = THREE.DoubleSide;
+                // m.side = THREE.DoubleSide;
                 let triangle = new THREE.Mesh(g, m);
                 let artist = docInfo[m.map.name].category === 0 ? docInfo[m.map.name].artist + " - " : "";
                 triangle.name = artist + docInfo[m.map.name].title;
@@ -446,29 +502,41 @@ function init() {
         });
         modalRenderer.setPixelRatio(window.devicePixelRatio);
         modalRenderer.setSize(width * 0.8, height * 0.6);
+        // modalRenderer.setSize(width, height);
         modalRenderer.setClearColor(0x000000, 0);
+        modalRenderer.domElement.classname = "modal-renderer";
+        modalRenderer.domElement.id = "modal-renderer";
         $("#faces").append(modalRenderer.domElement)
 
         modalRenderer.domElement.addEventListener("mousedown", onModalMouseDown);
         modalRenderer.domElement.addEventListener("mouseup", onModalMouseUp);
         modalRenderer.domElement.addEventListener("mousemove", onModalMouseMove);
 
-        // modalRenderer.domElement
-        //     .mouseup(onModalMouseUp)
-        //     .mousedown(onModalMouseDown)
-        //     .mousemove(onModalMouseMove);
-
         modalScene = new THREE.Scene();
 
-        let light = new THREE.HemisphereLight(0xffffff, 0x777777, 1);
-        light.position.set(0, 50, 0);
+        let light = new THREE.HemisphereLight(0xffffff, 0xbbbbbb, 0.9);
+        light.position.set(0, 5, 0);
         modalScene.add(light);
+        // let light = new THREE.HemisphereLight(0xffffff, 0x777777, 1);
+        // light.position.set(0, 50, 0);
+        // modalScene.add(light);
 
-        modalCamera = new THREE.PerspectiveCamera(85, width / height, 0.5, 150);
+        modalCamera = new THREE.PerspectiveCamera(60, width / height, 0.5, 150);
 
-        modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
-        modalControl.minDistance = 0.5;
-        modalControl.maxDistance = 30;
+        let directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(0, 5, 0);
+        modalScene.add(directionalLight);
+
+        // modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
+        // modalControl.minDistance = 0.5;
+        // modalControl.maxDistance = 30;
+        modalControl = new THREE.FirstPersonControls(modalCamera, $("#faces")[0]);
+        modalControl.lookSpeed = 20;
+        modalControl.movementSpeed = 10;
+        modalControl.mouseDragOn = true;
+        modalControl.noFly = false;
+        modalControl.lookVertical = true;
+        clock = new THREE.Clock();
 
         modalTextRender = new THREE.CSS2DRenderer();
         modalTextRender.setSize(width * 0.8, height * 0.6);
@@ -505,7 +573,8 @@ function init() {
 
     function loadDocInfo() {
 
-        let csv_file = "../data/doc_namelist.csv";
+        // let csv_file = "../data/doc_namelist.csv";
+        let csv_file = "../data/docs.csv";
         Papa.parse(csv_file, {
             // preview: 100,
             header: true,
@@ -520,6 +589,7 @@ function init() {
                     docInfo[doc.id] = {
                         name: doc.name,
                         title: doc.title,
+                        color: doc.color,
                         artist: doc.artist,
                         category: doc.category
                     };
@@ -548,7 +618,13 @@ function init() {
                     let size = topic.size * 10;
                     group.scale.set(size, size, size);
                     topicSize.push(topic.size);
-                    topicGroups.push(group);
+                    topicGroupsForPlain.push(group);
+
+                    let group2 = new THREE.Group();
+                    group2.position.set(topic.x / 5, topic.y / 5, topic.z / 5);
+                    group2.scale.set(size, size, size);
+                    topicGroupsForImage.push(group2);
+
                     hulls.add(group);
                     return loadTerms(topic.id);
                 };
@@ -564,7 +640,7 @@ function init() {
                 const createUniverseHull = () => {
                     return new Promise((resolve, reject) => {
                         let points = [];
-                        topicGroups.forEach((topic, index) => {
+                        topicGroupsForPlain.forEach((topic, index) => {
                             let pos = new THREE.Vector3();
                             topic.getWorldPosition(pos);
                             points.push(pos);
@@ -586,7 +662,8 @@ function init() {
                 };
 
                 processTopics(results.data).then(createUniverseHull).then(() => {
-                    console.log("terms:", Object.keys(termHulls));
+                    $.LoadingOverlay("hide");
+                    console.log("terms:", termHulls);
                 }).catch((msg) => {
                     console.error(msg);
                 });
@@ -627,42 +704,63 @@ function init() {
                     return Promise.resolve("points.length < 4");
                 }
                 let geometry = new THREE.ConvexBufferGeometry(points);
+                let faceImageMats = [];
+                let facePlainMats = [];
                 const faceCount = geometry.getAttribute("position").count / 3;
-                let faceMats = [];
                 let uvArray = new Float32Array(faceCount * 3 * 2);
                 geometry.clearGroups();
 
-                const createHull = () => {
-                    const loadTexture = (i) => {
+                let grayMaterial = new THREE.MeshPhongMaterial({
+                    color: 0xcccccc,
+                    transparent: true,
+                    opacity: 0.2,
+                    side: THREE.DoubleSide
+                });
+
+                const loadTextures = () => {
+
+                    const loadFaceTexture = (faceIdx) => {
                         return new Promise((resolve, reject) => {
                             // FIXME: some file may not exist
-                            let fileName = docInfo[termDocs.id[rank][i]] ? docInfo[termDocs.id[rank][i]].name : "";
+                            let docId = termDocs.id[rank][faceIdx];
+                            let fileName = docInfo[docId] ? docInfo[docId].name : "";
                             let path = "../data/img/" + fileName + ".jpg";
-                            uvArray.set(uvPerFace, i * 6);
-                            geometry.addGroup(i * 3, 3, i);
+                            uvArray.set(uvPerFace, faceIdx * 6);
+                            geometry.addGroup(faceIdx * 3, 3, faceIdx);
                             let texture = textureLoader.load(
                                 path,
                                 function (tex) {
-                                    tex.name = termDocs.id[rank][i];
-                                    faceMats[i] = new THREE.MeshBasicMaterial({
+                                    tex.name = docId;
+                                    tex.minFilter = THREE.LinearFilter;
+                                    facePlainMats[faceIdx] = new THREE.MeshBasicMaterial({
+                                        // facePlainMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                        color: docInfo[docId].color,
+                                        transparent: true,
+                                        opacity: 0.5,
+                                        side: THREE.DoubleSide
+                                    });
+                                    faceImageMats[faceIdx] = new THREE.MeshLambertMaterial({
                                         map: tex,
                                         transparent: true,
                                         opacity: 0.7,
-                                        // polygonOffset: true,
-                                        // polygonOffsetFactor: 1., // positive value pushes polygon further away
-                                        // polygonOffsetUnits: 4.
+                                        side: THREE.DoubleSide
                                     });
                                     resolve();
                                 },
                                 undefined,
                                 function (err) {
-                                    faceMats[i] = new THREE.MeshBasicMaterial({
-                                        color: 0xffffff,
+                                    facePlainMats[faceIdx] = new THREE.MeshBasicMaterial({
+                                        // facePlainMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                        color: 0x000000,
                                         transparent: true,
-                                        opacity: 0.2,
-                                        // polygonOffset: true,
-                                        // polygonOffsetFactor: 1., // positive value pushes polygon further away
-                                        // polygonOffsetUnits: 4.
+                                        opacity: 0.5,
+                                        side: THREE.DoubleSide
+                                    });
+                                    faceImageMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                        color: 0x000000,
+                                        transparent: true,
+                                        opacity: 0.5,
+                                        side: THREE.DoubleSide
                                     });
                                     resolve();
                                 }
@@ -670,57 +768,48 @@ function init() {
                         });
                     };
 
-                    const promises = [...Array(faceCount).keys()].map(loadTexture);
+                    const promises = [...Array(faceCount).keys()].map(loadFaceTexture);
                     return Promise.all(promises).then(() => {
                         return new Promise((resolve, reject) => {
-                            let uv = new THREE.BufferAttribute(uvArray, 2);
-                            geometry.addAttribute("uv", uv);
-                            resolve(new THREE.Mesh(geometry, faceMats));
+                            resolve();
                         });
                     });
                 };
 
-                const addToScene = (mesh) => {
+                const createObjects = () => {
 
-                    // mesh
-                    mesh.position.set(term.x, term.y, term.z);
-                    mesh.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]); // so the shapes are same size
-                    // mesh.scale.set(0.1 / topicSize[t], 0.1 / topicSize[t], 0.1 / topicSize[t]); // so the shapes are same size
-                    mesh.name = term.term + "|" + t + "|" + rank;
-                    topicGroups[t].add(mesh);
+                    // mesh plain
+                    let meshPlain = new THREE.Mesh(geometry, facePlainMats);
+                    meshPlain.position.set(term.x, term.y, term.z);
+                    meshPlain.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]); // so the shapes are same size
+                    meshPlain.name = term.term + "|" + t + "|" + rank;
+                    topicGroupsForPlain[t].add(meshPlain);
 
                     // css label
                     let label = document.createElement("div");
                     label.className = "label";
                     label.textContent = term.term;
                     label.style.color = "rgba(" + rgbColors[t] + ", 0.8)";
-                    let cssObject = new THREE.CSS3DObject(label);
-                    // cssObject.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]);
+                    let cssObject = new THREE.CSS3DSprite(label);
                     cssObject.scale.set(0.0005 / topicSize[t], 0.0005 / topicSize[t], 0.0005 / topicSize[t]);
                     cssObject.position.set(term.x, term.y, term.z);
-                    topicGroups[t].add(cssObject);
+                    topicGroupsForPlain[t].add(cssObject);
 
-                    // wireframe (work with safari)
-
-                    // let geo = new THREE.Geometry().fromBufferGeometry(mesh.geometry);
-                    // let mat = new THREE.MeshBasicMaterial({
-                    //     color: 0xe3e3e3,
-                    //     wireframe: true,
-                    //     wireframeLinewidth: 5
-                    // });
-                    // let wireframe = new THREE.Mesh(geo, mat);
-                    // // wireframe.position.set(term.x, term.y, term.z);
-                    // // wireframe.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]);
-                    // // topicGroups[t].add(wireframe);
-                    // mesh.add(wireframe);
-
+                    // for search
                     if (!(term.term in termHulls)) {
                         termHulls[term.term] = [];
+
+                        let meshImage = new THREE.Mesh(geometry, faceImageMats);
+                        meshImage.position.set(term.x, term.y, term.z);
+                        meshImage.scale.set(0.01 / topicSize[t], 0.01 / topicSize[t], 0.01 / topicSize[t]); // so the shapes are same size
+                        meshImage.name = term.term + "|" + t + "|" + rank;
+                        topicGroupsForImage[t].add(meshImage);
+                        termHullsImage[term.term] = meshImage;
                     }
-                    termHulls[term.term].push(mesh);
+                    termHulls[term.term].push(meshPlain);
                 };
 
-                return createHull().then(addToScene);
+                return loadTextures().then(createObjects);
             };
             const promises = results.data.map(termPromise);
             return Promise.all(promises);
@@ -729,12 +818,13 @@ function init() {
         const createTopicHull = () => {
 
             return new Promise((resolve, reject) => {
-                let pos = topicGroups[t].position;
-                let scale = topicGroups[t].scale;
+                let pos = topicGroupsForPlain[t].position;
+                let scale = topicGroupsForPlain[t].scale;
 
                 let geo = new THREE.SphereGeometry(0.3 / scale.x, 18, 12);
                 let mat = new THREE.MeshBasicMaterial({
-                    color: hexColors[t],
+                    // color: hexColors[t],
+                    color: "rgb(" + rgbColors[t] + ")",
                     transparent: true,
                     opacity: 0.5
                 });
@@ -745,7 +835,7 @@ function init() {
                 topicHull.add(sphere);
 
                 let points = [];
-                topicGroups[t].children.forEach((child) => {
+                topicGroupsForPlain[t].children.forEach((child) => {
                     if (child.isMesh) { // only handle mesh but not css3obj
                         points.push(child.position);
                     }
@@ -753,7 +843,8 @@ function init() {
                 if (points.length >= 4) {
                     let geometry = new THREE.ConvexBufferGeometry(points);
                     let material = new THREE.MeshLambertMaterial({
-                        color: hexColors[t],
+                        // color: hexColors[t],
+                        color: "rgb(" + rgbColors[t] + ")",
                         transparent: true,
                         opacity: 0.2,
                         side: THREE.DoubleSide
@@ -771,10 +862,12 @@ function init() {
             });
         };
 
-        return parseCsv().then(assignTerms).then(createTopicHull)
-            .catch((msg) => {
-                console.error("error with loadTerm:", msg);
-            });
+        return parseCsv().then(assignTerms).then(createTopicHull).then(() => {
+            loading += 9;
+            $.LoadingOverlay("progress", loading);
+        }).catch((msg) => {
+            console.error("error with loadTerm:", msg);
+        });
     }
 
     function loadTermDocs(t, termsPerTopic) {
@@ -821,10 +914,36 @@ function init() {
         folderView.add(params, "term").onChange(function (value) {
             setLabelsVisibility(value);
             // TODO: Set opacity of hulls to 0.3
-            // TODO: Labels face to camera
+
         });
         folderView.add(params, "topics").onChange(function (value) {
             topicHull.visible = value;
+        });
+        let folderNight = gui.addFolder("Date line");
+        folderNight.add(params, "night").onChange(function (value) {
+
+            let from = {r: 16, g: 16, b: 16};
+            let to = {r: 227, g: 227, b: 227};
+
+            if (value) {
+                from = {r: 227, g: 227, b: 227};
+                to = {r: 16, g: 16, b: 16};
+            }
+
+            let tween = new TWEEN.Tween(from)
+                .to(to, 500)
+                .easing(TWEEN.Easing.Quartic.In)
+                .onUpdate(function () {
+                        let c = new THREE.Color(this.r / 256, this.g / 256, this.b / 256);
+                        scene.background = c;
+                        scene.fog = new THREE.Fog(c, 30, 50);
+                    }
+                ).onComplete(function () {
+                    let c = new THREE.Color(to.r / 256, to.g / 256, to.b / 256);
+                    scene.background = c;
+                    scene.fog = new THREE.Fog(c, 30, 50);
+                })
+                .start();
         });
         let folderSearch = gui.addFolder("Search");
         folderSearch.add(params, "keyword").onFinishChange(function (term) {
@@ -853,10 +972,11 @@ function init() {
                 minDist = dist;
             }
         });
-        goToObject(closestHull);
+        // goToObject(closestHull, termHulls[term]);
+        goToObject(closestHull, termHulls[term]);
     }
 
-    function goToObject(obj) {
+    function goToObject(obj, others = null) {
 
         if (obj.name === "universe" || obj.name.startsWith("point")) {
             return;
@@ -880,11 +1000,15 @@ function init() {
                 camera.lookAt(new THREE.Vector3(0, 0, 0));
                 if (obj.name.startsWith("topic")) {
                     let t = parseInt(obj.name.split("topic")[1]);
-                    outlinePass.selectedObjects = [topicGroups[t]];
+                    outlinePass.selectedObjects = [topicGroupsForPlain[t]];
                     outlinePass.pulsePeriod = 2;
                     outlinePass.edgeGlow = 0.5;
                 } else {
-                    outlinePass.selectedObjects = [obj];
+                    if (others) {
+                        outlinePass.selectedObjects = others;
+                    } else {
+                        outlinePass.selectedObjects = [obj];
+                    }
                     outlinePass.pulsePeriod = 2;
                     outlinePass.edgeGlow = 0.5;
                     glowing = obj;
@@ -911,6 +1035,8 @@ function animate() {
     modalRenderer.render(modalScene, modalCamera);
     modalTextRender.render(modalScene, modalCamera);
     control.update();
+    modalControl.update(clock.getDelta());
+
 
     stats.end();
 }
@@ -953,4 +1079,32 @@ function overlayOff() {
     modalScene.remove(modalScene.getObjectByName("modalMesh"));
     modalScene.remove(modalScene.getObjectByName("docPoints"));
     modalScene.remove(modalScene.getObjectByName("triangles"));
+}
+
+function markHullsWithTerm(obj) {
+
+    let term = obj.textContent.toLowerCase();
+    outlinePass.selectedObjects = termHulls[term];
+    outlinePass.pulsePeriod = 2;
+    outlinePass.edgeGlow = 0.5;
+
+    $.modal.close();
+
+    container.style.cursor = "default";
+
+    let from = camera.position.clone();
+    let to = new THREE.Vector3(8, 31, 25);
+
+    let tween = new TWEEN.Tween(from)
+        .to(to, 1500)
+        .easing(TWEEN.Easing.Linear.None)
+        .onUpdate(function () {
+            camera.position.set(this.x, this.y, this.z);
+            camera.lookAt(new THREE.Vector3(0, 0, 0));
+        })
+        .onComplete(function () {
+            camera.position.set(to.x, to.y, to.z);
+            camera.lookAt(new THREE.Vector3(0, 0, 0));
+        })
+        .start();
 }
