@@ -42,6 +42,8 @@ let infoForDetailView = new Array(10);
 // let topicHulls = new Array(10);
 let loading = 0;
 
+// let minFace = 100, minFaceTerm = "";
+
 init();
 animate();
 
@@ -159,10 +161,36 @@ function init() {
     container.addEventListener("mousemove", onMainMouseMove);
     container.addEventListener("touchmove", onMainMouseMove);
     container.addEventListener("click", onMainClick);
+    document.addEventListener("keyup", onKeyUp);
     window.addEventListener("resize", onWindowResize);
 
 
     // functions
+
+    function onKeyUp(event) {
+
+        // press 'P' for printing triangles
+        if (event.which === 80 && $.modal.isActive() && state === ModalView.UNFOLD) {
+
+            let w = window.open("", "");
+            w.document.title = "Print & Fold";
+
+            // set orientation to landscape (doesn't work tho)
+            // let style = w.document.createElement("style");
+            // style.type = "text/css";
+            // style.media = "print";
+            // style.appendChild(w.document.createTextNode("@page {size: landscape;}"));
+            // let head = w.document.head || w.document.getElementsByTagName("head")[0];
+            // head.appendChild(style);
+
+            let img = new Image();
+            // modalRenderer.render(scene, camera);
+            img.src = modalRenderer.domElement.toDataURL();
+            w.document.body.appendChild(img);
+            w.print();
+            // w.close();
+        }
+    }
 
     function onMainMouseMove(event) {
 
@@ -191,9 +219,9 @@ function init() {
         let selected = checkIntersection(event);
         if (selected) {
             if (selected === glowing) {
-                let term = selected.name.split("|")[0];
-                let mat = termHullsImage[term].material;
-                let geo = new THREE.Geometry().fromBufferGeometry(termHullsImage[term].geometry);
+                let hullTerm = selected.name.split("|")[0];
+                let mat = termHullsImage[hullTerm].material;
+                let geo = new THREE.Geometry().fromBufferGeometry(termHullsImage[hullTerm].geometry);
                 addToModal(new THREE.Mesh(geo, mat), selected.name);
                 // addToModal(termHullsImage[term], selected.name);
             } else {
@@ -217,11 +245,13 @@ function init() {
             prepareTranslucentView(name.split("|"));
             prepareUnfoldView(mesh);
             toDefault();
-            mesh.scale.set(20, 20, 20);
-            modalCamera.position.set(0, 0, 0);
-            // modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
-            // modalCamera.position.set(0, 0, 7);
-            // modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
+
+            // --- INSIDE ---
+            // mesh.scale.set(20, 20, 20);
+            // modalCamera.position.set(0, 0, 0);
+
+            modalCamera.position.set(0, 0, 7);
+            modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
             overlayOn();
         }
 
@@ -246,11 +276,14 @@ function init() {
                     new THREE.Vector2(uvPerFace[4], uvPerFace[5])
                 ]];
                 let m = mesh.material[i].clone();
-                // console.log(m)
                 // m.side = THREE.DoubleSide;
                 let triangle = new THREE.Mesh(g, m);
-                let artist = docInfo[m.map.name].category === 0 ? docInfo[m.map.name].artist + " - " : "";
-                triangle.name = artist + docInfo[m.map.name].title;
+                if (m.name) {
+                    let artist = docInfo[m.name].category === 0 ? docInfo[m.name].artist + " - " : "";
+                    triangle.name = artist + docInfo[m.name].title;
+                }
+                // let artist = docInfo[m.map.name].category === 0 ? docInfo[m.map.name].artist + " - " : "";
+                // triangle.name = artist + docInfo[m.map.name].title;
                 triangle.position.set(o.x, o.y, o.z);
                 triangles.add(triangle);
             });
@@ -280,6 +313,7 @@ function init() {
         function prepareTranslucentView(info) {
 
             let term = info[0], t = info[1], rank = info[2];
+            // let t = info[1], rank = info[2];
             let docPos = infoForDetailView[t].position[rank], docId = infoForDetailView[t].id[rank];
             $("#term").text(term);
             docPoints = new THREE.Group();
@@ -414,7 +448,11 @@ function init() {
 
         // camera
         let camFrom = modalCamera.position.clone();
-        let camTo = toUnfold ? new THREE.Vector3(0, 0, 17) : new THREE.Vector3(0, 0, 7);
+        let camTo = toUnfold ? new THREE.Vector3(0, 0, 20) : new THREE.Vector3(0, 0, 10);
+
+        if (!toUnfold) {
+            switchControl(false);
+        }
 
         let camTween = new TWEEN.Tween(camFrom)
             .to(camTo, duration)
@@ -423,7 +461,7 @@ function init() {
                 modalCamera.position.set(this.x, this.y, this.z);
                 modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
             })
-            .onComplete(function () {
+            .onComplete(() => {
                 modalCamera.position.set(camTo.x, camTo.y, camTo.z);
                 modalCamera.lookAt(new THREE.Vector3(0, 0, 0));
                 if (!toUnfold && state === ModalView.TRANSLUCENT) {
@@ -431,9 +469,36 @@ function init() {
                     docPoints.visible = true;
                     triangles.visible = false;
                 }
+                if (toUnfold) {
+                    switchControl(true);
+                }
             }).start();
 
         // transitionGroup.start();
+    }
+    
+    function switchControl(toUnfold) {
+
+        let prevCamera = modalCamera;
+        modalCamera = new THREE.PerspectiveCamera(60, width / height, 0.5, 150);
+        modalCamera.position.copy( prevCamera.position );
+        modalCamera.rotation.copy( prevCamera.rotation );
+
+        if (toUnfold) {
+            modalControl = new THREE.MapControls(modalCamera, $("#faces")[0]);
+            // modalMapControl.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
+            // modalMapControl.dampingFactor = 0.25;
+            modalControl.screenSpacePanning = true;
+            modalControl.minDistance = 3;
+            modalControl.maxDistance = 30;
+            modalControl.maxPolarAngle = Math.PI / 2;
+        }
+        else {
+            modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
+            modalControl.minDistance = 0.5;
+            modalControl.maxDistance = 30;
+        }
+
     }
 
     function onModalMouseMove(event) {
@@ -495,10 +560,12 @@ function init() {
         }
     }
 
+
     function initiateModal() {
 
         modalRenderer = new THREE.WebGLRenderer({
-            alpha: true
+            alpha: true,
+            preserveDrawingBuffer: true
         });
         modalRenderer.setPixelRatio(window.devicePixelRatio);
         modalRenderer.setSize(width * 0.8, height * 0.6);
@@ -514,29 +581,29 @@ function init() {
 
         modalScene = new THREE.Scene();
 
-        let light = new THREE.HemisphereLight(0xffffff, 0xbbbbbb, 0.9);
-        light.position.set(0, 5, 0);
+        // INSIDE VIEW
+
+
+        let light = new THREE.HemisphereLight(0xffffff, 0x777777, 1);
+        light.position.set(0, 50, 0);
         modalScene.add(light);
-        // let light = new THREE.HemisphereLight(0xffffff, 0x777777, 1);
-        // light.position.set(0, 50, 0);
-        // modalScene.add(light);
+
+        // let directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        // directionalLight.position.set(0, 5, 0);
+        // modalScene.add(directionalLight);
+        // modalControl = new THREE.FirstPersonControls(modalCamera, $("#faces")[0]);
+        // modalControl.lookSpeed = 20;
+        // modalControl.movementSpeed = 10;
+        // modalControl.mouseDragOn = true;
+        // modalControl.noFly = false;
+        // modalControl.lookVertical = true;
+        // clock = new THREE.Clock();
 
         modalCamera = new THREE.PerspectiveCamera(60, width / height, 0.5, 150);
 
-        let directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        directionalLight.position.set(0, 5, 0);
-        modalScene.add(directionalLight);
-
-        // modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
-        // modalControl.minDistance = 0.5;
-        // modalControl.maxDistance = 30;
-        modalControl = new THREE.FirstPersonControls(modalCamera, $("#faces")[0]);
-        modalControl.lookSpeed = 20;
-        modalControl.movementSpeed = 10;
-        modalControl.mouseDragOn = true;
-        modalControl.noFly = false;
-        modalControl.lookVertical = true;
-        clock = new THREE.Clock();
+        modalControl = new THREE.OrbitControls(modalCamera, $("#faces")[0]);
+        modalControl.minDistance = 0.5;
+        modalControl.maxDistance = 30;
 
         modalTextRender = new THREE.CSS2DRenderer();
         modalTextRender.setSize(width * 0.8, height * 0.6);
@@ -590,6 +657,7 @@ function init() {
                         name: doc.name,
                         title: doc.title,
                         color: doc.color,
+                        hasImage: doc.hasImg,
                         artist: doc.artist,
                         category: doc.category
                     };
@@ -662,6 +730,7 @@ function init() {
                 };
 
                 processTopics(results.data).then(createUniverseHull).then(() => {
+                    $.LoadingOverlay("progress", 99);
                     $.LoadingOverlay("hide");
                     console.log("terms:", termHulls);
                 }).catch((msg) => {
@@ -707,6 +776,9 @@ function init() {
                 let faceImageMats = [];
                 let facePlainMats = [];
                 const faceCount = geometry.getAttribute("position").count / 3;
+                if (faceCount < 12) {
+                    console.log(term.term, faceCount);
+                }
                 let uvArray = new Float32Array(faceCount * 3 * 2);
                 geometry.clearGroups();
 
@@ -727,10 +799,14 @@ function init() {
                             let path = "../data/img/" + fileName + ".jpg";
                             uvArray.set(uvPerFace, faceIdx * 6);
                             geometry.addGroup(faceIdx * 3, 3, faceIdx);
+
+                            // if (docInfo[docId] && docInfo[docId].hasImage) {
+                            //
+                            // }
                             let texture = textureLoader.load(
                                 path,
                                 function (tex) {
-                                    tex.name = docId;
+                                    // tex.name = docId;
                                     tex.minFilter = THREE.LinearFilter;
                                     facePlainMats[faceIdx] = new THREE.MeshBasicMaterial({
                                         // facePlainMats[faceIdx] = new THREE.MeshLambertMaterial({
@@ -739,12 +815,15 @@ function init() {
                                         opacity: 0.5,
                                         side: THREE.DoubleSide
                                     });
-                                    faceImageMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                    // faceImageMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                    faceImageMats[faceIdx] = new THREE.MeshBasicMaterial({
                                         map: tex,
                                         transparent: true,
                                         opacity: 0.7,
-                                        side: THREE.DoubleSide
+                                        side: THREE.DoubleSide,
+                                        name: docId
                                     });
+                                    // faceImageMats[faceIdx].name = docId;
                                     resolve();
                                 },
                                 undefined,
@@ -756,12 +835,16 @@ function init() {
                                         opacity: 0.5,
                                         side: THREE.DoubleSide
                                     });
-                                    faceImageMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                    // faceImageMats[faceIdx] = new THREE.MeshLambertMaterial({
+                                    faceImageMats[faceIdx] = new THREE.MeshBasicMaterial({
                                         color: 0x000000,
                                         transparent: true,
-                                        opacity: 0.5,
-                                        side: THREE.DoubleSide
+                                        opacity: 0.7,
+                                        side: THREE.DoubleSide,
+                                        name: docId
                                     });
+                                    // faceImageMats[faceIdx].name = docId;
+                                    // console.log("err", term, faceImageMats[faceIdx], err);
                                     resolve();
                                 }
                             );
@@ -873,11 +956,17 @@ function init() {
     function loadTermDocs(t, termsPerTopic) {
 
         let csvFile = "../data/topics/topic_" + t + "_doc_points.csv";
-        let pos = new Array(termsPerTopic);
-        let docId = new Array(termsPerTopic);
-        for (let i = 0; i < pos.length; i++) {
-            pos[i] = [];
-            docId[i] = [];
+        // let pos = new Array(termsPerTopic);
+        // let docId = new Array(termsPerTopic);
+        // for (let i = 0; i < pos.length; i++) {
+        //     pos[i] = [];
+        //     docId[i] = [];
+        // }
+        let pos = [];
+        let docId = [];
+        for (let i = 0; i < termsPerTopic; i++) {
+            pos.push([]);
+            docId.push([]);
         }
         Papa.parse(csvFile, {
             header: true,
@@ -1021,7 +1110,7 @@ function init() {
 function animate() {
 
     TWEEN.update();
-    // transitionGroup.update();
+
     requestAnimationFrame(animate);
 
     stats.begin();
@@ -1035,8 +1124,7 @@ function animate() {
     modalRenderer.render(modalScene, modalCamera);
     modalTextRender.render(modalScene, modalCamera);
     control.update();
-    modalControl.update(clock.getDelta());
-
+    // modalControl.update(clock.getDelta());
 
     stats.end();
 }
